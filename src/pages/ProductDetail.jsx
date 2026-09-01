@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronDown, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Boxes, ChevronDown, Tag } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { isInventoryApiConfigured } from '../lib/inventoryApi';
+import QuantityPicker from '../components/QuantityPicker';
 
-const QUANTITY_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
+const ACCENT = 'var(--color-shop)';
+const LOW_STOCK_AT = 3;
 
 export default function ProductDetail() {
-  const [quantity, setQuantity] = useState('Quantity sold');
+  const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('Pieces');
   const [selling, setSelling] = useState(false);
   const [message, setMessage] = useState(null);
@@ -17,7 +19,7 @@ export default function ProductDetail() {
 
   const product = products.find((p) => String(p.id) === id) ?? products[0];
 
-  const qtyChosen = quantity !== 'Quantity sold';
+  const qtyChosen = Number(quantity) > 0;
   const canSell = product.stock > 0 && qtyChosen && !selling;
 
   async function handleSell() {
@@ -35,7 +37,7 @@ export default function ProductDetail() {
           ? `Sold ${quantity} ${unit} — offline, will sync when back online.`
           : `Sold ${quantity} ${unit}.`,
       });
-      setQuantity('Quantity sold');
+      setQuantity('');
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
@@ -44,107 +46,126 @@ export default function ProductDetail() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#0a0c0e] text-white flex flex-col items-center px-6 py-8 font-sans relative overflow-hidden">
-
-      {/* Background Node Network / Grid Effect */}
-      <div className="absolute inset-0 bg-[radial-gradient(#15803d_1.5px,transparent_1.5px)] [background-size:32px_32px] opacity-25 pointer-events-none" />
-
-      {/* Header / Logo */}
-      <header className="w-full max-w-sm mb-8 z-10 flex items-center gap-3">
+    <div className="ground min-h-dvh text-ink flex flex-col items-center px-5 pt-7 pb-40 font-sans">
+      <header className="w-full max-w-md mb-5 flex items-center gap-3">
         <button
           onClick={() => navigate('/shop')}
-          className="p-2 -ml-2 rounded-full text-gray-400 hover:text-white transition-colors"
+          className="glass w-10 h-10 rounded-full grid place-items-center text-ink-2 hover:text-ink transition-colors"
           aria-label="Back to products"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1
-          className="text-3xl font-extrabold text-[#00ff88] tracking-wider drop-shadow-[0_0_12px_#00ff88]"
-          style={{ fontFamily: "'Caveat', 'Comic Sans MS', cursive" }}
-        >
-          Shop<span className="text-purple-400">.</span>
+        <h1 className="flex-1 text-xl font-light tracking-[0.22em] uppercase">
+          Shop<span className="text-shop">.</span>
         </h1>
       </header>
 
-      {/* Main Content Card Container */}
-      <main className="w-full max-w-sm flex flex-col items-center z-10">
-
-        {/* Product Image Capsule */}
-        <div className="w-full aspect-[4/3] bg-white rounded-[2.5rem] flex items-center justify-center p-6 shadow-2xl mb-8">
+      <main className="w-full max-w-md flex flex-col gap-4">
+        <div className="photo-tile w-full aspect-[4/3] rounded-[28px] p-6 grid place-items-center overflow-hidden">
           <img
             src={product.image}
             alt={product.name}
-            className="max-h-full max-w-full object-contain"
+            className="max-h-full max-w-full object-contain mix-blend-multiply"
           />
         </div>
 
-        {/* Product Title */}
-        <h2 className="text-2xl font-medium text-gray-100 tracking-wide text-center">
-          {product.name}
-        </h2>
-        {product.price > 0 && (
-          <p className="text-xl font-semibold text-white mt-1">{product.price}</p>
-        )}
-        <p className="text-sm text-[#00ff88] mb-8">
-          {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
-        </p>
+        <section className="glass rounded-[28px] p-5">
+          <h2 className="text-2xl font-light leading-tight">{product.name}</h2>
+          {product.code && (
+            <p className="mt-1 text-[11px] tracking-[0.14em] uppercase text-ink-3">{product.code}</p>
+          )}
 
-        {/* Control Controls / Dropdowns Row */}
-        <div className="w-full flex items-center gap-3 mb-12">
-
-          {/* Quantity Sold Dropdown */}
-          <div className="relative flex-1">
-            <select
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="w-full appearance-none bg-[#d9d9d9] text-black text-sm font-medium py-3 pl-4 pr-8 rounded-full focus:outline-none cursor-pointer shadow-md"
-            >
-              <option value="Quantity sold">Quantity sold</option>
-              {QUANTITY_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 text-black absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {product.price > 0 && <Spec icon={Tag} label="Price" value={`KES ${product.price}`} />}
+            <Spec
+              icon={Boxes}
+              label="In stock"
+              value={product.stock > 0 ? `${product.stock}` : 'None'}
+              tone={
+                product.stock <= 0 ? 'out' : product.stock <= LOW_STOCK_AT ? 'low' : 'ok'
+              }
+            />
           </div>
 
-          {/* Unit Dropdown */}
-          <div className="relative w-32">
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              className="w-full appearance-none bg-[#d9d9d9] text-black text-base font-normal py-3 pl-5 pr-8 rounded-full focus:outline-none cursor-pointer shadow-md text-center"
-            >
-              <option value="Pieces">Pieces</option>
-              <option value="Packets">Packets</option>
-            </select>
-            <ChevronDown className="w-4 h-4 text-black absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <p className="mt-5 text-[11px] text-ink-3">Quantity sold</p>
+          <div className="mt-2.5 flex flex-col items-center gap-3">
+            <QuantityPicker value={quantity} onChange={setQuantity} accent={ACCENT} />
+
+            <Select value={unit} onChange={setUnit} ariaLabel="Unit" className="w-36">
+              <option className="bg-ground-2" value="Pieces">
+                Pieces
+              </option>
+              <option className="bg-ground-2" value="Packets">
+                Packets
+              </option>
+            </Select>
           </div>
 
-        </div>
-
-        {/* CTA Button */}
-        <button
-          onClick={handleSell}
-          disabled={!canSell}
-          className="w-48 bg-[#00cc66] hover:bg-[#00e673] active:scale-95 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:active:scale-100 text-white font-black text-2xl tracking-wider py-3 rounded-full transition-all duration-200 shadow-[0_0_20px_rgba(0,204,102,0.4)] disabled:shadow-none uppercase"
-        >
-          {product.stock === 0 ? 'Sold Out' : selling ? 'Selling…' : 'Sold'}
-        </button>
-
-        {message && (
-          <p
-            className={`mt-4 text-sm ${
-              message.type === 'error' ? 'text-red-400' : 'text-[#00ff88]'
-            }`}
-          >
-            {message.text}
-          </p>
-        )}
-
+          {message && (
+            <p
+              className={`mt-4 text-sm ${message.type === 'error' ? 'text-[#e88b8b]' : 'text-shop'}`}
+            >
+              {message.text}
+            </p>
+          )}
+        </section>
       </main>
 
+      {/* The action stays in reach at the bottom of the screen, with the
+          number it applies to beside it. */}
+      <div className="fixed bottom-0 left-0 right-0 px-5 pb-5 pt-3">
+        <div className="glass-strong mx-auto w-full max-w-md rounded-[26px] p-2.5 pl-5 flex items-center gap-3 shadow-2xl">
+          <div className="min-w-0">
+            <p className="text-[10px] text-ink-3">
+              {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
+            </p>
+            <p className="text-lg font-medium leading-tight">
+              {product.price > 0 ? `KES ${product.price}` : '—'}
+            </p>
+          </div>
+          <button
+            onClick={handleSell}
+            disabled={!canSell}
+            className="pill-primary ml-auto shrink-0 rounded-[20px] px-8 py-3.5 text-sm font-semibold tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {product.stock === 0 ? 'Sold out' : selling ? 'Selling…' : 'Sold'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Spec({ icon: Icon, label, value, tone }) {
+  const color = tone === 'out' || tone === 'low' ? 'var(--color-trolley)' : 'var(--color-ink-2)';
+  return (
+    <span className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
+      <Icon className="w-4 h-4 shrink-0 text-ink-3" aria-hidden="true" />
+      <span className="leading-tight">
+        <span className="block text-[10px] text-ink-3">{label}</span>
+        <span className="block text-[13px] font-medium" style={{ color }}>
+          {value}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function Select({ value, onChange, ariaLabel, className = '', children }) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        className="w-full appearance-none rounded-full border border-white/12 bg-white/[0.06] text-ink text-sm py-3 pl-4 pr-9 text-center focus:outline-none focus:border-white/25 cursor-pointer"
+      >
+        {children}
+      </select>
+      <ChevronDown
+        className="w-4 h-4 text-ink-3 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+        aria-hidden="true"
+      />
     </div>
   );
 }

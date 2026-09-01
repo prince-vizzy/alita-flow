@@ -57,7 +57,7 @@ export default function RankedBarChart({ items, color, valueFormatter, diverging
               />
             </div>
 
-            <span className="w-16 sm:w-20 shrink-0 text-right text-[11px] font-medium text-white tabular-nums">
+            <span className="w-16 sm:w-20 shrink-0 text-right text-[11px] font-medium text-ink tabular-nums">
               {valueFormatter(item.value)}
             </span>
           </div>

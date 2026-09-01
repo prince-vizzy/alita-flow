@@ -21,11 +21,20 @@ export default function QuantityPicker({
               key={n}
               type="button"
               onClick={() => onChange(String(n))}
-              className="min-w-9 h-9 shrink-0 rounded-full px-2 text-sm font-semibold transition-colors"
+              aria-pressed={active}
+              className="min-w-10 h-10 shrink-0 rounded-2xl px-2.5 text-sm font-semibold transition-colors border"
               style={
                 active
-                  ? { backgroundColor: accent, color: '#000' }
-                  : { backgroundColor: '#1a1a1a', color: '#9ca3af', border: '1px solid #2a2a2a' }
+                  ? {
+                      backgroundColor: `color-mix(in srgb, ${accent} 18%, transparent)`,
+                      borderColor: `color-mix(in srgb, ${accent} 45%, transparent)`,
+                      color: accent,
+                    }
+                  : {
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      borderColor: 'rgba(255,255,255,0.1)',
+                      color: 'var(--color-ink-3)',
+                    }
               }
             >
               {n}
@@ -39,7 +48,7 @@ export default function QuantityPicker({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full max-w-[11rem] bg-[#d9d9d9] text-black text-sm font-medium py-2.5 px-4 rounded-full focus:outline-none text-center"
+        className="w-full max-w-[13rem] rounded-full border border-white/12 bg-white/[0.06] text-ink placeholder:text-ink-3/70 text-sm py-2.5 px-4 text-center focus:outline-none focus:border-white/25"
       />
     </div>
   );

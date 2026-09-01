@@ -261,7 +261,7 @@ export function Tooltip({ x, title, rows }) {
             className="inline-block shrink-0"
             style={{ width: 10, height: 2, borderRadius: 999, backgroundColor: row.color }}
           />
-          <span className="font-semibold text-white tabular-nums">{row.value}</span>
+          <span className="font-semibold text-ink tabular-nums">{row.value}</span>
           <span style={{ color: INK.muted }}>{row.name}</span>
         </p>
       ))}

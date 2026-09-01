@@ -12,7 +12,7 @@ export default function HeroStat({ label, value, caption, delta, deltaLabel, bre
   const deltaColor = flat ? INK.muted : up ? STATUS.good : STATUS.critical;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+    <div className="glass rounded-[26px] p-5 flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="flex-1 min-w-0">
         <p className="text-[11px]" style={{ color: INK.muted }}>
           {label}
@@ -50,7 +50,7 @@ export default function HeroStat({ label, value, caption, delta, deltaLabel, bre
                   style={{ width: 10, height: 2, borderRadius: 999, backgroundColor: entry.color }}
                 />
                 <span style={{ color: INK.muted }}>{entry.label}</span>
-                <span className="font-medium text-white tabular-nums">{entry.value}</span>
+                <span className="font-medium text-ink tabular-nums">{entry.value}</span>
               </li>
             ))}
           </ul>

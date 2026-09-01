@@ -11,7 +11,7 @@
 // The four categorical slots are assigned in fixed order and never cycled or
 // re-sorted by rank, so an item keeps its color when a filter changes which
 // items are on screen.
-export const SURFACE = '#0d0f12';
+export const SURFACE = '#1c2721';
 
 export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
@@ -34,12 +34,15 @@ export const STATUS = {
   critical: '#d03b3b',
 };
 
+// Ink and chrome, matched to the app's tokens. The gridline is deliberately
+// low-contrast (1.17:1) — it's a hairline the data sits over, not something
+// to read.
 export const INK = {
-  primary: '#ffffff',
-  secondary: '#c3c2b7',
-  muted: '#898781',
-  grid: '#2c2c2a',
-  axis: '#383835',
+  primary: '#f2f6f1',
+  secondary: '#c3d2c1',
+  muted: '#8ba189',
+  grid: '#26332c',
+  axis: '#33443b',
 };
 
 /* ------------------------------ formatters ------------------------------- */

@@ -1,5 +1,33 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Alita Flow visual language — deep forest ground, frosted glass surfaces,
+   soft sage accents. Registered with Tailwind so every token is available as
+   a utility (bg-ground, text-ink, border-hairline, …) instead of a hex string
+   copy-pasted through the app.
+--------------------------------------------------------------------------- */
+@theme {
+  /* Ground: the page itself, and the one step up from it. */
+  --color-ground: #0f1a14;
+  --color-ground-2: #16241d;
+
+  /* Ink: three steps, never more. */
+  --color-ink: #f2f6f1;
+  --color-ink-2: #c3d2c1;
+  --color-ink-3: #8ba189;
+
+  /* Section identity — Shop reads green, Trolley reads amber, both tuned to
+     sit on the forest ground rather than glow off it. */
+  --color-shop: #86e3a8;
+  --color-trolley: #e8b06a;
+
+  /* Sage: the calm accent the buttons and active states are built from. */
+  --color-sage: #b9d3a8;
+  --color-sage-deep: #6f9163;
+
+  --color-hairline: rgba(255, 255, 255, 0.12);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -7,4 +35,89 @@
 body {
   margin: 0;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background-color: #0f1a14;
+  color: #f2f6f1;
+}
+
+/* Light coming through leaves: three soft pools over the ground, no image to
+   download and nothing to go stale offline. */
+.ground {
+  background:
+    radial-gradient(130% 85% at 50% -15%, rgba(134, 227, 168, 0.14), transparent 62%),
+    radial-gradient(85% 60% at 100% 0%, rgba(111, 145, 99, 0.16), transparent 58%),
+    radial-gradient(95% 75% at 0% 105%, rgba(8, 22, 15, 0.75), transparent 62%),
+    var(--color-ground);
+  background-attachment: fixed;
+}
+
+/* The frosted card. `backdrop-filter` degrades to a flat translucent panel
+   where it isn't supported, which still reads correctly on this ground. */
+.glass {
+  background-color: rgba(255, 255, 255, 0.055);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-strong {
+  background-color: rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* Modal surface. Glass over a busy grid gets noisy, so sheets sit on their
+   own tinted ground and let the backdrop blur do the separating. */
+.sheet {
+  background-color: rgba(20, 33, 26, 0.92);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* A list that floats over live content — search suggestions, item matches.
+   Unlike a modal there's no dimmed backdrop behind it, so it stays fully
+   opaque: glass over a grid of white product photos is unreadable. */
+.popover {
+  background-color: #16241d;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Product photos are shot on white. A pure-white tile glares against the
+   forest ground, so the tile is a warm off-white instead. */
+.photo-tile {
+  background-color: #eef2ec;
+  box-shadow: inset 0 0 0 1px rgba(15, 26, 20, 0.06);
+}
+
+/* The one filled call-to-action: light sage, dark ink, full pill. */
+.pill-primary {
+  background: linear-gradient(180deg, #cfe3c4 0%, #a9c99a 100%);
+  color: #14231a;
+}
+
+/* Same button, wearing the Trolley's amber instead of the Shop's sage. */
+.pill-trolley {
+  background: linear-gradient(180deg, #f0c489 0%, #d99f52 100%);
+  color: #241a0e;
+}
+
+.pill-primary:active,
+.pill-trolley:active {
+  transform: scale(0.98);
+}
+
+/* Emoji stand-in for trolley items with no photo — a tinted tile rather than
+   an emoji floating on an off-white square meant for product shots. */
+.emoji-tile {
+  background-color: rgba(232, 176, 106, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(232, 176, 106, 0.18);
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
 }

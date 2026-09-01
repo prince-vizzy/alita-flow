@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { BarChart3, Table2 } from 'lucide-react';
-import { INK } from '../../lib/vizTheme';
+import { INK, SURFACE } from '../../lib/vizTheme';
 
 // The frame every chart on the dashboard sits in: title, one line of context,
 // the legend (always present for two or more series, so identity never rests
@@ -14,12 +14,12 @@ export default function ChartCard({ title, subtitle, legend, table, empty, dim, 
   return (
     <section
       aria-labelledby={headingId}
-      className="rounded-2xl border border-white/10 bg-[#0d0f12] p-4 sm:p-5 transition-opacity duration-200"
+      className="glass rounded-[26px] p-4 sm:p-5 transition-opacity duration-200"
       style={{ opacity: dim ? 0.55 : 1 }}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <h3 id={headingId} className="text-sm font-semibold text-white">
+          <h3 id={headingId} className="text-sm font-semibold text-ink">
             {title}
           </h3>
           {subtitle && <p className="text-[11px] mt-0.5" style={{ color: INK.muted }}>{subtitle}</p>}
@@ -105,8 +105,10 @@ export function DataTable({ columns, rows }) {
               <th
                 key={col.key}
                 scope="col"
-                className="sticky top-0 bg-[#0d0f12] py-2 pr-3 font-medium text-left whitespace-nowrap"
+                className="sticky top-0 py-2 pr-3 font-medium text-left whitespace-nowrap"
                 style={{
+                  // Opaque, or scrolled rows show through the header.
+                  backgroundColor: SURFACE,
                   color: INK.muted,
                   textAlign: col.align ?? 'left',
                   borderBottom: `1px solid ${INK.grid}`,

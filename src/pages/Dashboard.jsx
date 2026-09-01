@@ -42,6 +42,7 @@ import {
 import {
   INK,
   SALES_COLOR,
+  STATUS,
   SERIES,
   SPEND_COLOR,
   formatExact,
@@ -63,8 +64,8 @@ const TROLLEY_ITEM_ORDER = ['Eggs', 'Sweet Potatoes', 'Arrow Roots', 'Smokie'];
 // the page title — never a chart mark: neither hue sits in the validated
 // lightness band for marks on this surface.
 const TABS = [
-  { key: 'shop', label: 'Shop', chrome: '#00ff88' },
-  { key: 'trolley', label: 'Trolley', chrome: '#ffb020' },
+  { key: 'shop', label: 'Shop', chrome: 'var(--color-shop)' },
+  { key: 'trolley', label: 'Trolley', chrome: 'var(--color-trolley)' },
 ];
 
 const WASTE_DAYS = 14;
@@ -145,22 +146,17 @@ export default function Dashboard() {
   const activeTab = TABS.find((t) => t.key === tab);
 
   return (
-    <div className="min-h-dvh bg-[#0a0c0e] text-white flex flex-col items-center px-4 py-6 font-sans relative">
-      <div className="absolute inset-0 bg-[radial-gradient(#1e3a5f_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
-
-      <header className="w-full max-w-3xl mb-5 flex items-center gap-3 z-10">
+    <div className="ground min-h-dvh text-ink flex flex-col items-center px-5 py-7 font-sans">
+      <header className="w-full max-w-3xl mb-5 flex items-center gap-3">
         <button
           onClick={() => navigate('/')}
-          className="p-2 -ml-2 rounded-full text-gray-400 hover:text-white transition-colors"
+          className="p-2 -ml-2 rounded-full text-ink-3 hover:text-ink transition-colors"
           aria-label="Back to sections"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1
-          className="text-3xl font-extrabold tracking-wider flex-1"
-          style={{ color: activeTab.chrome, fontFamily: "'Caveat', 'Comic Sans MS', cursive" }}
-        >
-          Dashboard<span className="text-purple-400">.</span>
+        <h1 className="flex-1 text-xl font-light tracking-[0.22em] uppercase">
+          Dashboard<span style={{ color: activeTab.chrome }}>.</span>
         </h1>
 
         {data && (
@@ -173,7 +169,7 @@ export default function Dashboard() {
             <button
               onClick={() => load('refresh')}
               disabled={status.refreshing}
-              className="p-2 rounded-full text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+              className="p-2 rounded-full text-ink-3 hover:text-ink transition-colors disabled:opacity-50"
               aria-label="Refresh dashboard"
             >
               <RefreshCw className={`w-4 h-4 ${status.refreshing ? 'animate-spin' : ''}`} />
@@ -183,7 +179,7 @@ export default function Dashboard() {
       </header>
 
       {data && (
-        <div className="w-full max-w-3xl mb-4 z-10 flex gap-2 rounded-2xl border border-white/10 bg-[#0d0f12] p-1">
+        <div className="glass w-full max-w-3xl mb-4 flex gap-2 rounded-[22px] p-1.5">
           {TABS.map((t) => {
             const active = tab === t.key;
             return (
@@ -191,11 +187,15 @@ export default function Dashboard() {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 aria-pressed={active}
-                className="flex-1 rounded-xl py-2 text-sm font-semibold tracking-wide transition-colors"
+                className="flex-1 rounded-[18px] py-2.5 text-sm font-medium tracking-wide transition-colors"
                 style={
                   active
-                    ? { backgroundColor: `${t.chrome}1f`, color: t.chrome, border: `1px solid ${t.chrome}4d` }
-                    : { color: '#6b7280', border: '1px solid transparent' }
+                    ? {
+                        backgroundColor: `color-mix(in srgb, ${t.chrome} 14%, transparent)`,
+                        color: t.chrome,
+                        border: `1px solid color-mix(in srgb, ${t.chrome} 32%, transparent)`,
+                      }
+                    : { color: 'var(--color-ink-3)', border: '1px solid transparent' }
                 }
               >
                 {t.label}
@@ -208,12 +208,8 @@ export default function Dashboard() {
       {/* One filter row, above everything it scopes — every tile, chart and
           table below re-renders against the same slice. */}
       {view && (
-        <div className="w-full max-w-3xl mb-5 z-10 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div
-            role="group"
-            aria-label="Date range"
-            className="flex gap-1 rounded-xl border border-white/10 bg-[#0d0f12] p-1"
-          >
+        <div className="w-full max-w-3xl mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div role="group" aria-label="Date range" className="glass flex gap-1 rounded-[18px] p-1">
             {RANGES.map((r) => {
               const active = r.key === rangeKey;
               return (
@@ -221,10 +217,10 @@ export default function Dashboard() {
                   key={r.key}
                   onClick={() => setRangeKey(r.key)}
                   aria-pressed={active}
-                  className="rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors"
+                  className="rounded-[14px] px-3.5 py-2 text-[11px] font-medium transition-colors"
                   style={{
-                    backgroundColor: active ? 'rgba(255,255,255,0.08)' : 'transparent',
-                    color: active ? '#ffffff' : INK.muted,
+                    backgroundColor: active ? 'rgba(255,255,255,0.1)' : 'transparent',
+                    color: active ? INK.primary : INK.muted,
                   }}
                 >
                   {r.label}
@@ -240,20 +236,20 @@ export default function Dashboard() {
       )}
 
       {status.loading && (
-        <p className="text-sm z-10" style={{ color: INK.muted }}>
+        <p className="text-sm" style={{ color: INK.muted }}>
           Loading…
         </p>
       )}
 
       {status.error && (
-        <div className="w-full max-w-3xl flex items-center gap-2 text-xs font-medium text-red-400 bg-red-400/10 border border-red-400/30 rounded-2xl px-4 py-3 z-10">
+        <div className="glass w-full max-w-3xl flex items-center gap-2 text-xs font-medium text-[#e88b8b] rounded-[22px] px-4 py-3">
           <WifiOff className="w-3.5 h-3.5 shrink-0" />
           {status.error}
         </div>
       )}
 
       {view && (
-        <main className="w-full max-w-3xl z-10 pb-14">
+        <main className="w-full max-w-3xl pb-14">
           {tab === 'shop' ? (
             <ShopPanel
               stats={view.shop.stats}
@@ -522,7 +518,7 @@ function StockPill({ out }) {
   return (
     <span
       className="inline-flex items-center gap-1 text-[11px] font-medium"
-      style={{ color: out ? '#d03b3b' : '#fab219' }}
+      style={{ color: out ? STATUS.critical : STATUS.warning }}
     >
       <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
       {out ? 'Out of stock' : 'Low'}

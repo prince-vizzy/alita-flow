@@ -20,7 +20,7 @@ export default function StatTile({
   invertDelta = false,
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0d0f12] px-3.5 py-3">
+    <div className="glass rounded-[22px] px-3.5 py-3">
       <p className="text-[11px] flex items-center gap-1.5" style={{ color: INK.muted }}>
         {Icon && <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />}
         {label}
