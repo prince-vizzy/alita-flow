@@ -1,11 +1,34 @@
 # Alita Flow
 
-A React + Vite PWA for browsing inventory, selling items, and adding stock,
-built for a plumbing/hardware shop. Stock is synced live to a Google Sheet
-and the app works offline (browsing, selling, and restocking all queue and
-sync automatically once back online).
+A React + Vite PWA for browsing inventory, selling items, and adding stock.
+Stock is synced live to a Google Sheet and the app works offline (browsing,
+selling, and restocking all queue and sync automatically once back online).
 
 **Live:** https://alita-flow.vercel.app
+
+## Sections
+
+The app opens on a chooser with two independent businesses behind it:
+
+- **Shop** (`/shop`) — plumbing and hardware. One stock number per item.
+- **Trolley** (`/trolley`) — food cooked and sold daily. Two stock numbers per
+  item: **regular** (raw supply on hand) and **cooked** (ready to sell today).
+
+Each section has its own product data, context, and sheet tabs, and they share
+only the offline queue — which tags every action with its section so the two
+never process each other's pending changes.
+
+### How trolley stock moves
+
+    Add Stock →  regular +n
+    Cook      →  regular −n, cooked +n
+    Sold      →  cooked −n
+
+Customers only ever buy cooked stock, so selling is blocked until something has
+been cooked. Cooked stock is derived from the current day's log rows only, so
+it resets to zero on its own each midnight; anything cooked but unsold on an
+earlier day shows up in the **Waste — last 7 days** panel on the trolley
+screen.
 
 ## Stack
 

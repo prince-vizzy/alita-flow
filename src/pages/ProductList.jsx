@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, X, Download, Share, WifiOff, RefreshCw } from 'lucide-react';
+import { Search, Plus, X, WifiOff, RefreshCw, ArrowLeft } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { useInstallPrompt } from '../context/InstallPromptContext';
+import InstallButton from '../components/InstallButton';
 
 export default function ProductList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
-  const [showInstallTip, setShowInstallTip] = useState(false);
   const [searchBarVisible, setSearchBarVisible] = useState(true);
   const lastScrollY = useRef(0);
   const navigate = useNavigate();
   const { products, isOnline, pendingCount, syncError, clearSyncError } = useInventory();
-  const { canInstall, isIos, installed, install } = useInstallPrompt();
 
   useEffect(() => {
     function handleScroll() {
@@ -31,28 +29,16 @@ export default function ProductList() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  function handleDownloadClick() {
-    if (canInstall) {
-      install();
-    } else {
-      setShowInstallTip((v) => !v);
-    }
-  }
-
-  function installTipText() {
-    if (isIos) return 'Tap the Share icon, then "Add to Home Screen".';
-    return "Your browser hasn't offered to install this app yet — try reloading the page, or use Chrome/Edge on Android or desktop.";
-  }
-
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = products.filter((p) => {
+    const term = searchTerm.toLowerCase();
+    return p.name.toLowerCase().includes(term) || (p.code && p.code.toLowerCase().includes(term));
+  });
 
   const suggestions = searchTerm ? filtered.slice(0, 6) : [];
 
   function goToProduct(id) {
     setShowSuggestions(false);
-    navigate(`/product/${id}`);
+    navigate(`/shop/product/${id}`);
   }
 
   return (
@@ -62,29 +48,22 @@ export default function ProductList() {
       <div className="absolute inset-0 bg-[radial-gradient(#15803d_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
       {/* Header / Logo */}
-      <header className="w-full max-w-md mb-6 flex items-center justify-between">
+      <header className="w-full max-w-md mb-6 flex items-center justify-between gap-2">
+        <button
+          onClick={() => navigate('/')}
+          className="p-2 -ml-2 rounded-full text-gray-400 hover:text-white transition-colors shrink-0"
+          aria-label="Back to sections"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
         <h1
-          className="text-3xl sm:text-4xl font-extrabold text-[#00ff88] tracking-wider drop-shadow-[0_0_10px_#00ff88]"
+          className="text-3xl sm:text-4xl font-extrabold text-[#00ff88] tracking-wider drop-shadow-[0_0_10px_#00ff88] flex-1 min-w-0"
           style={{ fontFamily: "'Caveat', 'Comic Sans MS', cursive" }}
         >
-          Alita Flow<span className="text-purple-400">.</span>
+          Shop<span className="text-purple-400">.</span>
         </h1>
-        <div className="flex items-center gap-2 relative">
-          {!installed && (
-            <button
-              onClick={handleDownloadClick}
-              className="p-2 rounded-full text-[#00ff88] border border-[#00ff88]/50 hover:bg-[#00ff88]/10 transition-colors"
-              aria-label="Install app"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          )}
-          {showInstallTip && (
-            <div className="absolute top-full right-0 mt-2 w-56 bg-[#0d0f12] border border-[#00ff88]/30 rounded-xl p-3 shadow-2xl z-30 text-xs text-gray-300 flex items-start gap-1.5">
-              {isIos && <Share className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#00ff88]" />}
-              <span>{installTipText()}</span>
-            </div>
-          )}
+        <div className="flex items-center gap-2 relative shrink-0">
+          <InstallButton />
           <button
             onClick={() => setShowAddStock(true)}
             className="flex items-center gap-1.5 text-xs font-medium text-[#00ff88] border border-[#00ff88]/50 hover:bg-[#00ff88]/10 transition-colors rounded-full px-3 py-1.5"
@@ -157,8 +136,16 @@ export default function ProductList() {
                 onMouseDown={() => goToProduct(product.id)}
                 className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[#00ff88]/10 transition-colors border-b border-gray-800 last:border-b-0"
               >
-                <span className="text-sm text-gray-200 truncate">{product.name}</span>
-                <span className="text-xs text-[#00ff88] shrink-0">{product.stock} in stock</span>
+                <span className="min-w-0">
+                  <span className="block text-sm text-gray-200 truncate">{product.name}</span>
+                  {product.code && (
+                    <span className="block text-[10px] text-gray-500 tracking-wide">{product.code}</span>
+                  )}
+                </span>
+                <span className="text-xs text-gray-400 shrink-0 flex items-center gap-2">
+                  {product.price > 0 && <span className="text-white font-medium">{product.price}</span>}
+                  <span className="text-[#00ff88]">{product.stock} in stock</span>
+                </span>
               </button>
             ))}
           </div>
@@ -170,7 +157,7 @@ export default function ProductList() {
         {filtered.map((product) => (
           <div
             key={product.id}
-            onClick={() => navigate(`/product/${product.id}`)}
+            onClick={() => navigate(`/shop/product/${product.id}`)}
             className="flex flex-col items-center group cursor-pointer"
           >
             {/* Rounded Pill Container for Image */}
@@ -190,6 +177,9 @@ export default function ProductList() {
             <p className="mt-3 text-sm font-medium text-gray-200 text-center tracking-wide">
               {product.name}
             </p>
+            {product.price > 0 && (
+              <p className="text-sm font-semibold text-white">{product.price}</p>
+            )}
             <p className="text-xs text-[#00ff88]">{product.stock} in stock</p>
           </div>
         ))}
@@ -214,9 +204,10 @@ function AddStockModal({ products, onClose }) {
   const { addStock } = useInventory();
 
   const selectedProduct = products.find((p) => String(p.id) === productId);
-  const matches = products.filter((p) =>
-    p.name.toLowerCase().includes(itemSearch.toLowerCase())
-  );
+  const matches = products.filter((p) => {
+    const term = itemSearch.toLowerCase();
+    return p.name.toLowerCase().includes(term) || (p.code && p.code.toLowerCase().includes(term));
+  });
 
   function selectProduct(p) {
     setProductId(String(p.id));
@@ -295,6 +286,7 @@ function AddStockModal({ products, onClose }) {
                     className="w-full text-left px-4 py-2.5 text-sm text-black hover:bg-black/10"
                   >
                     {p.name}
+                    {p.code && <span className="ml-2 text-xs text-gray-600">{p.code}</span>}
                   </button>
                 ))}
               </div>

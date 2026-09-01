@@ -52,7 +52,7 @@ export default function ProductDetail() {
       {/* Header / Logo */}
       <header className="w-full max-w-sm mb-8 z-10 flex items-center gap-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/shop')}
           className="p-2 -ml-2 rounded-full text-gray-400 hover:text-white transition-colors"
           aria-label="Back to products"
         >
@@ -62,7 +62,7 @@ export default function ProductDetail() {
           className="text-3xl font-extrabold text-[#00ff88] tracking-wider drop-shadow-[0_0_12px_#00ff88]"
           style={{ fontFamily: "'Caveat', 'Comic Sans MS', cursive" }}
         >
-          Alita Flow<span className="text-purple-400">.</span>
+          Shop<span className="text-purple-400">.</span>
         </h1>
       </header>
 
@@ -82,6 +82,9 @@ export default function ProductDetail() {
         <h2 className="text-2xl font-medium text-gray-100 tracking-wide text-center">
           {product.name}
         </h2>
+        {product.price > 0 && (
+          <p className="text-xl font-semibold text-white mt-1">{product.price}</p>
+        )}
         <p className="text-sm text-[#00ff88] mb-8">
           {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
         </p>

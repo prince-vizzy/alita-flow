@@ -29,3 +29,16 @@ dev-dist
 # Local tooling / scratch files
 .claude
 items.docx
+shop items.docx
+trolley.docx
+new items.docx
+dashboard.ipynb
+
+# Source paperwork the app is built *from*, not built *with* — the item list,
+# price list and import templates live here for reference, not in the bundle.
+Alitaflow Stock.pdf
+shop-items-template.csv
+shop-items-template.xlsx
+
+# Photos extracted from "shop items.docx" (~12 MB) — regenerate rather than commit
+shop-items-photos/

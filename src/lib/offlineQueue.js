@@ -2,7 +2,9 @@ const QUEUE_KEY = 'alita-flow-pending-actions';
 
 export function getQueue() {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+    const raw = JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+    // Actions queued before the app had sections are all shop actions.
+    return raw.map((action) => ({ section: 'shop', ...action }));
   } catch {
     return [];
   }
@@ -12,7 +14,11 @@ function saveQueue(queue) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
-// action: { type: 'sell' | 'addStock', name, qty, unit, timestamp }
+// action: {
+//   section: 'shop' | 'trolley',
+//   type: 'sell' | 'addStock' | 'cook',   // 'cook' is trolley-only
+//   name, qty, unit, timestamp
+// }
 export function enqueueAction(action) {
   const queue = getQueue();
   const entry = { ...action, id: crypto.randomUUID() };

@@ -13,6 +13,12 @@ const InventoryContext = createContext(null);
 const CACHE_KEY = 'alita-flow-products-cache';
 const SYNCED_AT_KEY = 'alita-flow-last-synced';
 
+// The offline queue is shared with the trolley section, so only ever touch
+// the entries belonging to the shop.
+function shopQueue() {
+  return getQueue().filter((a) => a.section === 'shop');
+}
+
 function loadCachedProducts() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -38,7 +44,7 @@ export function InventoryProvider({ children }) {
   const [isLive, setIsLive] = useState(false);
   const [error, setError] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendingCount, setPendingCount] = useState(() => getQueue().length);
+  const [pendingCount, setPendingCount] = useState(() => shopQueue().length);
   const [syncError, setSyncError] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(() => {
     const raw = localStorage.getItem(SYNCED_AT_KEY);
@@ -67,7 +73,7 @@ export function InventoryProvider({ children }) {
 
   const syncQueue = useCallback(async () => {
     if (!isInventoryApiConfigured() || !navigator.onLine) return;
-    for (const action of getQueue()) {
+    for (const action of shopQueue()) {
       try {
         if (action.type === 'sell') {
           await sellItem(action.name, action.qty, action.unit, action.timestamp);
@@ -81,7 +87,7 @@ export function InventoryProvider({ children }) {
         removeAction(action.id);
         setSyncError(`Couldn't sync ${action.type} of "${action.name}": ${err.message}`);
       }
-      setPendingCount(getQueue().length);
+      setPendingCount(shopQueue().length);
     }
     await refresh();
   }, [refresh]);
@@ -128,8 +134,8 @@ export function InventoryProvider({ children }) {
       }
     }
 
-    enqueueAction({ type: 'sell', name: product.name, qty, unit, timestamp });
-    setPendingCount(getQueue().length);
+    enqueueAction({ section: 'shop', type: 'sell', name: product.name, qty, unit, timestamp });
+    setPendingCount(shopQueue().length);
     const newStock = product.stock - qty;
     setProducts((prev) => applyStockDelta(prev, product.id, -qty));
     return { stock: newStock, queued: true };
@@ -154,8 +160,8 @@ export function InventoryProvider({ children }) {
       }
     }
 
-    enqueueAction({ type: 'addStock', name: product.name, qty, unit, timestamp });
-    setPendingCount(getQueue().length);
+    enqueueAction({ section: 'shop', type: 'addStock', name: product.name, qty, unit, timestamp });
+    setPendingCount(shopQueue().length);
     const newStock = product.stock + qty;
     setProducts((prev) => applyStockDelta(prev, product.id, qty));
     return { stock: newStock, queued: true };
