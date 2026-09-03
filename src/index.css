@@ -121,3 +121,27 @@ textarea,
 button {
   font-family: inherit;
 }
+
+/* The mark bobs so it reads as something waiting to be asked rather than a
+   button parked in the corner. It sits on a wrapper, not the button itself,
+   so the button keeps its own press transform. Stops while the conversation
+   is open, and for anyone who has asked for less motion. */
+@keyframes dock-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.dock-bob {
+  animation: dock-bob 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-bob {
+    animation: none;
+  }
+}

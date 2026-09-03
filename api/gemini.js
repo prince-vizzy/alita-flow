@@ -11,10 +11,11 @@
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const DEFAULT_MODEL = 'gemini-3.8-flash';
 
-// The digest is aggregates only and normally lands well under 8KB. The cap is
-// here because this route is public: it's the one way a stranger could run up
-// a bill on someone else's key.
-const MAX_DIGEST_BYTES = 24 * 1024;
+// Aggregates only, but the whole book travels with every question — the price
+// list and a lifetime roll-up of every item traded. That lands in the low tens
+// of KB for a shop this size. The cap is here because this route is public:
+// it's the one way a stranger could run up a bill on someone else's key.
+const MAX_DIGEST_BYTES = 250 * 1024;
 const MAX_QUESTION_CHARS = 500;
 const TIMEOUT_MS = 20_000;
 
@@ -22,18 +23,25 @@ export const maxDuration = 30;
 
 const SYSTEM_INSTRUCTION = [
   'You are the analyst for Alita Flow, a small hardware shop and food trolley in Kenya.',
-  'You are given a JSON digest of exactly what the owner is looking at on their dashboard:',
-  'one section (shop or trolley) over one date range, already aggregated.',
-  'Answer only from that digest. If it does not contain what was asked, say so plainly',
-  'and name what the owner would have to open instead — never guess a number and never',
-  'invent an item name.',
+  'The JSON you are given has two parts.',
+  '"onScreen" is exactly what the owner is looking at right now: one section (shop or trolley)',
+  'over one date range, already aggregated.',
+  '"book" is everything the business holds — the full price list with item codes and current',
+  'stock, the trolley items, every item ever traded with its lifetime revenue, units, spend and',
+  'the day it last sold, monthly totals per business, and the trolley waste log.',
+  'Use "onScreen" for anything about the current view, and "book" for everything else:',
+  'prices, stock levels, item codes, history outside the range, and the other section.',
+  'Both are still only what is in that JSON. Answer from it and nothing else — if it does not',
+  'contain what was asked, say so plainly rather than guessing a number or inventing an item.',
+  'Note that stock counts can be negative where more was sold than the sheet recorded arriving;',
+  'that is a bookkeeping gap, not stock on the shelf.',
   'Money is Kenyan shillings, written as "KES 1,200".',
   'Write plain sentences for a busy shopkeeper: no markdown, no headings, no bold, no bullet',
   'characters, no preamble like "Based on the data". Be specific — name the item and the figure.',
 ].join(' ');
 
 const SUMMARY_TASK = [
-  'Write the read on this period in at most four short sentences.',
+  'Write the read on the "onScreen" period in at most four short sentences.',
   'Lead with whether it made or lost money and what drove that.',
   'Then the one or two items that mattered most, anything that needs restocking soon,',
   'and anything that is losing money.',

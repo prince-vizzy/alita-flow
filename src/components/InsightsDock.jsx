@@ -248,25 +248,28 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
         </div>
       )}
 
-      {/* The mark itself is the handle. */}
-      <button
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-        aria-label={open ? 'Close Alita Flow insights' : 'Ask Alita Flow about these numbers'}
-        className="glass-strong fixed z-40 bottom-5 right-5 w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
-        style={{ borderColor: `color-mix(in srgb, ${accent} 34%, transparent)` }}
-      >
-        <span className="photo-tile w-9 h-9 rounded-full p-1.5 grid place-items-center">
-          <img src={logo} alt="" className="w-full h-full object-contain" />
-        </span>
-        {summaryState === 'loading' && (
-          <span
-            aria-hidden="true"
-            className="absolute inset-0 rounded-full animate-ping"
-            style={{ border: `1px solid ${accent}`, opacity: 0.35 }}
-          />
-        )}
-      </button>
+      {/* The mark itself is the handle. The bob lives on the wrapper so the
+          button is free to use transform for its own press feedback. */}
+      <span className={`fixed z-40 bottom-5 right-5 ${open ? '' : 'dock-bob'}`}>
+        <button
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-label={open ? 'Close Alita Flow insights' : 'Ask Alita Flow about these numbers'}
+          className="glass-strong relative block w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
+          style={{ borderColor: `color-mix(in srgb, ${accent} 34%, transparent)` }}
+        >
+          <span className="photo-tile w-9 h-9 rounded-full p-1.5 grid place-items-center">
+            <img src={logo} alt="" className="w-full h-full object-contain" />
+          </span>
+          {summaryState === 'loading' && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-full animate-ping"
+              style={{ border: `1px solid ${accent}`, opacity: 0.35 }}
+            />
+          )}
+        </button>
+      </span>
     </>
   );
 }

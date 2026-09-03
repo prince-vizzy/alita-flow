@@ -22,8 +22,9 @@ import {
   isInventoryApiConfigured,
 } from '../lib/inventoryApi';
 import { isAdminUnlocked } from '../lib/adminGate';
+import { PRODUCTS } from '../data/products';
 import { fetchGeminiStatus } from '../lib/geminiApi';
-import { buildDigest } from '../lib/dashboardDigest';
+import { buildBook, buildDigest } from '../lib/dashboardDigest';
 import InsightsDock from '../components/InsightsDock';
 import StatTile from '../components/StatTile';
 import HeroStat from '../components/HeroStat';
@@ -159,29 +160,44 @@ export default function Dashboard() {
     return { shop: build('Hardware'), trolley: build('Trolley', TROLLEY_ITEM_ORDER) };
   }, [data, range]);
 
-  // The dock floats over the page rather than sitting in a panel, so the
-  // digest it talks about is built here, for whichever tab is showing.
-  const digest = useMemo(() => {
-    if (!view || !data || !geminiReady) return null;
-    if (tab === 'shop') {
-      return buildDigest({
-        section: 'shop',
-        range,
-        stats: view.shop.stats,
-        previous: view.shop.previous,
-        stock: buildStockView(data.shopItems, data.stock),
-      });
-    }
-    return buildDigest({
-      section: 'trolley',
-      range,
-      stats: view.trolley.stats,
-      previous: view.trolley.previous,
-      kitchen: buildKitchenView(data.trolleyItems, view.trolley.today.itemsSold),
+  // Everything the app holds, rebuilt only when the dashboard refetches: the
+  // price list, the stock position and the whole ledger. Questions reach well
+  // past the tab and range on screen, so the answer has to be able to.
+  const book = useMemo(() => {
+    if (!data || !geminiReady) return null;
+    return buildBook({
+      rows: data.rows,
+      catalogue: PRODUCTS,
+      shopItems: data.shopItems,
+      trolleyItems: data.trolleyItems,
       waste: data.waste,
-      today: view.trolley.today,
     });
-  }, [view, data, geminiReady, tab, range]);
+  }, [data, geminiReady]);
+
+  // The dock floats over the page rather than sitting in a panel, so the
+  // slice it opens with is built here, for whichever tab is showing.
+  const digest = useMemo(() => {
+    if (!view || !data || !book) return null;
+    const onScreen =
+      tab === 'shop'
+        ? buildDigest({
+            section: 'shop',
+            range,
+            stats: view.shop.stats,
+            previous: view.shop.previous,
+            stock: buildStockView(data.shopItems, data.stock),
+          })
+        : buildDigest({
+            section: 'trolley',
+            range,
+            stats: view.trolley.stats,
+            previous: view.trolley.previous,
+            kitchen: buildKitchenView(data.trolleyItems, view.trolley.today.itemsSold),
+            waste: data.waste,
+            today: view.trolley.today,
+          });
+    return { onScreen, book };
+  }, [view, data, book, tab, range]);
 
   if (!unlocked) return null;
 

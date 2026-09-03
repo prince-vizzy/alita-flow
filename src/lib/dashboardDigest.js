@@ -140,3 +140,131 @@ export function buildDigest({ section, range, stats, previous, stock, kitchen, w
 
   return digest;
 }
+
+/* ---------------------------------- book --------------------------------- */
+
+// Everything the app holds, as opposed to the slice on screen: the full price
+// list and stock position for both businesses, and what the whole ledger says
+// about every item ever traded. Without this a question like "what hasn't
+// sold in months" or "what is a Bulb 9W worth" can't be answered at all,
+// because the on-screen digest only ever carries one section over one range.
+//
+// It is rebuilt only when the dashboard refetches, and every question in a
+// session reuses it.
+
+// Sorted by revenue, so if this ever has to be trimmed it loses the items
+// that matter least.
+const MAX_LEDGER_ITEMS = 400;
+
+function lifetimeByItem(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = `${row.business}\u0000${row.item}`;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = {
+        business: row.business,
+        item: row.item,
+        revenue: 0,
+        units: 0,
+        spend: 0,
+        sales: 0,
+        firstDay: row.day,
+        lastSoldDay: null,
+      };
+      map.set(key, entry);
+    }
+    if (row.day < entry.firstDay) entry.firstDay = row.day;
+    if (row.type === 'Sales') {
+      entry.revenue += Number(row.sales) || 0;
+      entry.units += Number(row.qty) || 0;
+      entry.sales += 1;
+      if (!entry.lastSoldDay || row.day > entry.lastSoldDay) entry.lastSoldDay = row.day;
+    } else if (row.type === 'Purchases') {
+      entry.spend += Number(row.expenses) || 0;
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, MAX_LEDGER_ITEMS)
+    .map((e) => ({
+      business: e.business,
+      item: e.item,
+      revenue: round(e.revenue),
+      units: round(e.units),
+      spend: round(e.spend),
+      net: round(e.revenue - e.spend),
+      sales: e.sales,
+      firstDay: e.firstDay,
+      lastSoldDay: e.lastSoldDay,
+    }));
+}
+
+function monthlyByBusiness(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = `${row.business}\u0000${row.day.slice(0, 7)}`;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = { business: row.business, month: row.day.slice(0, 7), sales: 0, purchases: 0 };
+      map.set(key, entry);
+    }
+    if (row.type === 'Sales') entry.sales += Number(row.sales) || 0;
+    else if (row.type === 'Purchases') entry.purchases += Number(row.expenses) || 0;
+  }
+  return [...map.values()]
+    .sort((a, b) => a.month.localeCompare(b.month) || a.business.localeCompare(b.business))
+    .map((e) => ({ ...e, sales: round(e.sales), purchases: round(e.purchases) }));
+}
+
+// The price list the shop actually works from: the catalogue's own codes and
+// prices, with live stock written over them wherever the sheet has a figure
+// for that name.
+function priceList(catalogue, liveItems) {
+  const live = new Map((liveItems ?? []).map((item) => [item.name, item]));
+  return (catalogue ?? []).map((product) => {
+    const current = live.get(product.name);
+    return {
+      code: product.code ?? null,
+      name: product.name,
+      price: round(current?.price ?? product.price),
+      stock: round(current?.stock ?? product.stock),
+    };
+  });
+}
+
+export function buildBook({ rows = [], catalogue, shopItems, trolleyItems, waste }) {
+  const items = priceList(catalogue, shopItems);
+  const days = rows.map((r) => r.day).filter(Boolean).sort();
+
+  return {
+    note: 'The whole book, not the view on screen. Use it for anything the on-screen digest cannot answer.',
+    currency: 'KES',
+    ledgerCovers: days.length ? { from: days[0], to: days[days.length - 1], rows: rows.length } : null,
+    shop: {
+      itemsInCatalogue: items.length,
+      stockIsLive: Boolean(shopItems),
+      outOfStock: items.filter((i) => i.stock <= 0).length,
+      lowStock: items.filter((i) => i.stock > 0 && i.stock <= 3).length,
+      unitsOnHand: items.reduce((sum, i) => sum + Math.max(i.stock, 0), 0),
+      retailValue: items.reduce((sum, i) => sum + Math.max(i.stock, 0) * i.price, 0),
+      // Every item the shop sells, with its code, price and what is left.
+      priceList: items,
+    },
+    trolley: (trolleyItems ?? []).map((item) => ({
+      name: item.name,
+      price: round(item.price),
+      rawStock: round(item.regularStock),
+      cookedStock: round(item.cookedStock),
+    })),
+    // One row per item per business across the entire ledger.
+    lifetimeByItem: lifetimeByItem(rows),
+    monthlyByBusiness: monthlyByBusiness(rows),
+    trolleyWaste: (waste ?? []).map((day) => ({
+      date: day.date,
+      units: round(day.total),
+      items: (day.items ?? []).map((i) => `${i.name} x${round(i.qty)}`).join(', '),
+    })),
+  };
+}

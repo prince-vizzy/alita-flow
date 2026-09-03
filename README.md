@@ -67,9 +67,23 @@ you can ask about the same slice. The bubble can be waved away without
 opening anything, and the thread resets when you change tab or range —
 answers about numbers no longer on screen would only mislead.
 
-Only aggregates are sent — totals, the trend series, top items, the stock
-attention list ([`src/lib/dashboardDigest.js`](./src/lib/dashboardDigest.js)).
-The raw ledger never leaves the device. A digest is around 2 KB.
+Every question carries two things
+([`src/lib/dashboardDigest.js`](./src/lib/dashboardDigest.js)):
+
+- `onScreen` — the slice being looked at: totals, the trend series, top items,
+  the stock attention list.
+- `book` — everything the business holds: the full price list with item codes
+  and current stock, the trolley items, every item ever traded with its
+  lifetime revenue, units, spend and the day it last sold, monthly totals per
+  business, and the waste log.
+
+Nothing is fine-tuned or "trained" — the model has no memory between
+questions, so each one has to carry the data it needs. Everything sent is
+aggregated; individual ledger rows never leave the device. A year of trading
+plus the whole catalogue comes to about 32 KB.
+
+The mark bobs gently while it waits, and holds still while the conversation
+is open or when the browser asks for reduced motion.
 
 The API key stays on the server. [`api/gemini.js`](./api/gemini.js) is a Vercel
 function that holds it; the browser only ever talks to `/api/gemini`. **Never
