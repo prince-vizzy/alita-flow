@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RefreshCw, Send, X } from 'lucide-react';
-import logo from '../assets/logo.svg';
+// The mark alone — logo.svg is a white drop that needs a light tile behind it.
+import logo from '../assets/logo-drop.svg';
 import { askDashboard, summarizeDashboard } from '../lib/geminiApi';
 import { INK, STATUS } from '../lib/vizTheme';
 
@@ -178,9 +179,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
           className="popover fixed z-40 inset-x-3 bottom-24 sm:left-auto sm:right-5 sm:w-[26rem] rounded-[26px] flex flex-col max-h-[68dvh]"
         >
           <header className="flex items-center gap-2.5 px-4 py-3 border-b border-white/10">
-            <span className="photo-tile w-7 h-7 rounded-full p-1 shrink-0 grid place-items-center">
-              <img src={logo} alt="" className="w-full h-full object-contain" />
-            </span>
+            <img src={logo} alt="" className="w-6 h-6 shrink-0 object-contain" />
             <span className="flex-1 min-w-0">
               <span className="block text-[13px] font-medium text-ink leading-tight">
                 Alita Flow
@@ -261,9 +260,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
           className="glass-strong relative block w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
           style={{ borderColor: `color-mix(in srgb, ${accent} 34%, transparent)` }}
         >
-          <span className="photo-tile w-9 h-9 rounded-full p-1.5 grid place-items-center">
-            <img src={logo} alt="" className="w-full h-full object-contain" />
-          </span>
+          <img src={logo} alt="" className="w-7 h-7 object-contain" />
           {summaryState === 'loading' && (
             <span
               aria-hidden="true"
