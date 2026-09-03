@@ -28,6 +28,9 @@ const nextId = () => (lastId += 1);
 
 export default function InsightsDock({ section, cacheKey, digest, accent }) {
   const [open, setOpen] = useState(false);
+  // Opened from the note, or from the mark. Tapping the note means "let me
+  // read that" — pulling the keyboard up would bury the very thing tapped.
+  const [intent, setIntent] = useState('read');
   const [thread, setThread] = useState([]);
   const [summaryState, setSummaryState] = useState('idle'); // idle | loading | error
   const [error, setError] = useState(null);
@@ -90,14 +93,19 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
 
   useEffect(() => () => inFlight.current?.abort(), []);
 
-  // Newest turn in view, the way a conversation reads.
+  const conversing = thread.some((message) => message.role === 'user');
+
+  // Until a question is asked the note is the content, and a note reads from
+  // its first line. After that the newest turn is what matters.
   useEffect(() => {
-    if (open && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [thread, asking, open]);
+    const list = listRef.current;
+    if (!open || !list) return;
+    list.scrollTop = conversing ? list.scrollHeight : 0;
+  }, [thread, asking, open, conversing]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+    if (open && intent === 'ask') inputRef.current?.focus();
+  }, [open, intent]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -144,7 +152,13 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
               <X className="w-3.5 h-3.5" />
             </button>
 
-            <button onClick={() => setOpen(true)} className="block w-full text-left">
+            <button
+              onClick={() => {
+                setIntent('read');
+                setOpen(true);
+              }}
+              className="block w-full text-left"
+            >
               <p
                 className="text-[13px] leading-relaxed line-clamp-4"
                 style={{ color: INK.secondary }}
@@ -152,7 +166,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
                 {opener.text}
               </p>
               <span className="mt-2 block text-[10px]" style={{ color: accent }}>
-                Tap to ask about it
+                Tap to read it all
               </span>
             </button>
 
@@ -252,7 +266,10 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
           button is free to use transform for its own press feedback. */}
       <span className={`fixed z-40 bottom-5 right-5 ${open ? '' : 'dock-bob'}`}>
         <button
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() => {
+            setIntent('ask');
+            setOpen((prev) => !prev);
+          }}
           aria-expanded={open}
           aria-label={open ? 'Close Alita Flow insights' : 'Ask Alita Flow about these numbers'}
           className="glass-strong relative block w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
