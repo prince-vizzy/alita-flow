@@ -60,9 +60,12 @@ for how to deploy or update it. Point the app at your deployment by setting
 
 ## Dashboard insights (Gemini)
 
-The admin dashboard has a **What the numbers say** card on both the Shop and
-Trolley tabs: Gemini writes a short read of whatever range is selected, and
-there's a box under it for asking a question about that same slice.
+The Alita Flow mark sits in the bottom-right corner of the admin dashboard.
+Gemini writes a short read of whatever range is selected and offers it as a
+speech bubble; tapping the mark opens that reading into a conversation where
+you can ask about the same slice. The bubble can be waved away without
+opening anything, and the thread resets when you change tab or range —
+answers about numbers no longer on screen would only mislead.
 
 Only aggregates are sent — totals, the trend series, top items, the stock
 attention list ([`src/lib/dashboardDigest.js`](./src/lib/dashboardDigest.js)).

@@ -24,7 +24,7 @@ import {
 import { isAdminUnlocked } from '../lib/adminGate';
 import { fetchGeminiStatus } from '../lib/geminiApi';
 import { buildDigest } from '../lib/dashboardDigest';
-import InsightsPanel from '../components/InsightsPanel';
+import InsightsDock from '../components/InsightsDock';
 import StatTile from '../components/StatTile';
 import HeroStat from '../components/HeroStat';
 import ChartCard, { DataTable } from '../components/charts/ChartCard';
@@ -159,6 +159,30 @@ export default function Dashboard() {
     return { shop: build('Hardware'), trolley: build('Trolley', TROLLEY_ITEM_ORDER) };
   }, [data, range]);
 
+  // The dock floats over the page rather than sitting in a panel, so the
+  // digest it talks about is built here, for whichever tab is showing.
+  const digest = useMemo(() => {
+    if (!view || !data || !geminiReady) return null;
+    if (tab === 'shop') {
+      return buildDigest({
+        section: 'shop',
+        range,
+        stats: view.shop.stats,
+        previous: view.shop.previous,
+        stock: buildStockView(data.shopItems, data.stock),
+      });
+    }
+    return buildDigest({
+      section: 'trolley',
+      range,
+      stats: view.trolley.stats,
+      previous: view.trolley.previous,
+      kitchen: buildKitchenView(data.trolleyItems, view.trolley.today.itemsSold),
+      waste: data.waste,
+      today: view.trolley.today,
+    });
+  }, [view, data, geminiReady, tab, range]);
+
   if (!unlocked) return null;
 
   const activeTab = TABS.find((t) => t.key === tab);
@@ -267,7 +291,7 @@ export default function Dashboard() {
       )}
 
       {view && (
-        <main className="w-full max-w-3xl pb-14">
+        <main className={`w-full max-w-3xl ${digest ? 'pb-28' : 'pb-14'}`}>
           {tab === 'shop' ? (
             <ShopPanel
               stats={view.shop.stats}
@@ -276,8 +300,6 @@ export default function Dashboard() {
               stockSummary={data.stock}
               items={data.shopItems}
               dim={status.refreshing}
-              insightsKey={geminiReady ? `shop:${rangeKey}:${status.syncedAt ?? 0}` : null}
-              accent={activeTab.chrome}
             />
           ) : (
             <TrolleyPanel
@@ -288,11 +310,18 @@ export default function Dashboard() {
               items={data.trolleyItems}
               waste={data.waste}
               dim={status.refreshing}
-              insightsKey={geminiReady ? `trolley:${rangeKey}:${status.syncedAt ?? 0}` : null}
-              accent={activeTab.chrome}
             />
           )}
         </main>
+      )}
+
+      {digest && (
+        <InsightsDock
+          section={tab}
+          cacheKey={`${tab}:${rangeKey}:${status.syncedAt ?? 0}`}
+          digest={digest}
+          accent={activeTab.chrome}
+        />
       )}
     </div>
   );
@@ -300,14 +329,10 @@ export default function Dashboard() {
 
 /* ---------------------------------- shop --------------------------------- */
 
-function ShopPanel({ stats, previous, range, stockSummary, items, dim, insightsKey, accent }) {
+function ShopPanel({ stats, previous, range, stockSummary, items, dim }) {
   const compare = previous ? `vs previous ${range.days} days` : null;
   const stock = useMemo(() => buildStockView(items, stockSummary), [items, stockSummary]);
   const periodWord = stats.granularity === 'day' ? 'day' : 'month';
-  const digest = useMemo(
-    () => (insightsKey ? buildDigest({ section: 'shop', range, stats, previous, stock }) : null),
-    [insightsKey, range, stats, previous, stock]
-  );
 
   return (
     <div className="flex flex-col gap-4" style={{ opacity: dim ? 0.55 : 1, transition: 'opacity 200ms' }}>
@@ -328,10 +353,6 @@ function ShopPanel({ stats, previous, range, stockSummary, items, dim, insightsK
             : 'No trading recorded in this window'
         }
       />
-
-      {digest && (
-        <InsightsPanel section="shop" cacheKey={insightsKey} digest={digest} accent={accent} />
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile
@@ -558,18 +579,11 @@ function StockPill({ out }) {
 
 /* -------------------------------- trolley -------------------------------- */
 
-function TrolleyPanel({ stats, previous, today, range, items, waste, dim, insightsKey, accent }) {
+function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
   const compare = previous ? `vs previous ${range.days} days` : null;
   const periodWord = stats.granularity === 'day' ? 'day' : 'month';
   const kitchen = useMemo(() => buildKitchenView(items, today.itemsSold), [items, today.itemsSold]);
   const wasteView = useMemo(() => buildWasteView(waste, stats.window.startKey), [waste, stats.window.startKey]);
-  const digest = useMemo(
-    () =>
-      insightsKey
-        ? buildDigest({ section: 'trolley', range, stats, previous, kitchen, waste, today })
-        : null,
-    [insightsKey, range, stats, previous, kitchen, waste, today]
-  );
   // Four items standing side by side stays readable for a couple of weeks;
   // past that the same data reads far better as one column per day.
   const stackUnits = stats.buckets.length > 14;
@@ -593,10 +607,6 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim, insigh
             : 'Nothing sold yet today'
         }
       />
-
-      {digest && (
-        <InsightsPanel section="trolley" cacheKey={insightsKey} digest={digest} accent={accent} />
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile
