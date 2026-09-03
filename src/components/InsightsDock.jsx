@@ -12,6 +12,10 @@ import { INK, STATUS } from '../lib/vizTheme';
 // A thread belongs to one slice (section + range + refresh). Change the range
 // and the answers still on screen would describe numbers that are no longer
 // there, so the thread goes with it.
+//
+// Opening never takes focus. On a phone that would slide the keyboard up over
+// the note the moment it opened — the reading comes first, and the keyboard
+// arrives when the box is tapped.
 
 const PLACEHOLDERS = {
   shop: 'Which items should I reorder first?',
@@ -28,9 +32,6 @@ const nextId = () => (lastId += 1);
 
 export default function InsightsDock({ section, cacheKey, digest, accent }) {
   const [open, setOpen] = useState(false);
-  // Opened from the note, or from the mark. Tapping the note means "let me
-  // read that" — pulling the keyboard up would bury the very thing tapped.
-  const [intent, setIntent] = useState('read');
   const [thread, setThread] = useState([]);
   const [summaryState, setSummaryState] = useState('idle'); // idle | loading | error
   const [error, setError] = useState(null);
@@ -45,7 +46,6 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
   const cache = useRef(new Map());
   const inFlight = useRef(null);
   const listRef = useRef(null);
-  const inputRef = useRef(null);
 
   const opener = thread.find((m) => m.role === 'assistant');
 
@@ -104,10 +104,6 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
   }, [thread, asking, open, conversing]);
 
   useEffect(() => {
-    if (open && intent === 'ask') inputRef.current?.focus();
-  }, [open, intent]);
-
-  useEffect(() => {
     if (!open) return undefined;
     function onKeyDown(e) {
       if (e.key === 'Escape') setOpen(false);
@@ -152,13 +148,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
               <X className="w-3.5 h-3.5" />
             </button>
 
-            <button
-              onClick={() => {
-                setIntent('read');
-                setOpen(true);
-              }}
-              className="block w-full text-left"
-            >
+            <button onClick={() => setOpen(true)} className="block w-full text-left">
               <p
                 className="text-[13px] leading-relaxed line-clamp-4"
                 style={{ color: INK.secondary }}
@@ -233,7 +223,6 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
 
           <form onSubmit={handleAsk} className="flex items-center gap-2 px-3 pb-3 pt-1">
             <input
-              ref={inputRef}
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -266,10 +255,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
           button is free to use transform for its own press feedback. */}
       <span className={`fixed z-40 bottom-5 right-5 ${open ? '' : 'dock-bob'}`}>
         <button
-          onClick={() => {
-            setIntent('ask');
-            setOpen((prev) => !prev);
-          }}
+          onClick={() => setOpen((prev) => !prev)}
           aria-expanded={open}
           aria-label={open ? 'Close Alita Flow insights' : 'Ask Alita Flow about these numbers'}
           className="glass-strong relative block w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
