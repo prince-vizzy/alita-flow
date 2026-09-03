@@ -12,6 +12,14 @@ const InventoryContext = createContext(null);
 
 const CACHE_KEY = 'alita-flow-products-cache';
 const SYNCED_AT_KEY = 'alita-flow-last-synced';
+const CATALOG_VERSION_KEY = 'alita-flow-catalog-version';
+
+// Bump this whenever the item list in data/products.js changes. Every device
+// that has opened the app before renders from its cached copy of the list, so
+// without a version stamp a new catalogue would only ever show up on a phone
+// that had cleared its storage. A mismatch throws the cache away and re-seeds
+// from PRODUCTS; live stock is pulled straight after by refresh().
+const CATALOG_VERSION = '2026-09-03-inventory-tracker';
 
 // The offline queue is shared with the trolley section, so only ever touch
 // the entries belonging to the shop.
@@ -21,6 +29,11 @@ function shopQueue() {
 
 function loadCachedProducts() {
   try {
+    if (localStorage.getItem(CATALOG_VERSION_KEY) !== CATALOG_VERSION) {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.setItem(CATALOG_VERSION_KEY, CATALOG_VERSION);
+      return null;
+    }
     const raw = localStorage.getItem(CACHE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
