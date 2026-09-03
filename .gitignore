@@ -26,6 +26,13 @@ dev-dist
 
 .vercel
 
+# Secrets. `*.local` already covers .env.local, but a bare .env would
+# otherwise be committed — GEMINI_API_KEY lives in one of these locally and
+# in the Vercel project settings in production.
+.env
+.env.*
+!.env.example
+
 # Local tooling / scratch files
 .claude
 items.docx
@@ -37,6 +44,7 @@ dashboard.ipynb
 # Source paperwork the app is built *from*, not built *with* — the item list,
 # price list and import templates live here for reference, not in the bundle.
 Alitaflow Stock.pdf
+Alitaflow_Inventory_Tracker.xlsx
 shop-items-template.csv
 shop-items-template.xlsx
 

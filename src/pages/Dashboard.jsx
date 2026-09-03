@@ -22,6 +22,9 @@ import {
   isInventoryApiConfigured,
 } from '../lib/inventoryApi';
 import { isAdminUnlocked } from '../lib/adminGate';
+import { fetchGeminiStatus } from '../lib/geminiApi';
+import { buildDigest } from '../lib/dashboardDigest';
+import InsightsPanel from '../components/InsightsPanel';
 import StatTile from '../components/StatTile';
 import HeroStat from '../components/HeroStat';
 import ChartCard, { DataTable } from '../components/charts/ChartCard';
@@ -77,10 +80,25 @@ export default function Dashboard() {
   const [rangeKey, setRangeKey] = useState('30d');
   const [data, setData] = useState(null);
   const [status, setStatus] = useState({ loading: true, refreshing: false, error: null, syncedAt: null });
+  // Whether the server holds a Gemini key. Nothing about the insights panel
+  // renders until it says yes, so a deploy without the key looks like a
+  // dashboard that simply never had one.
+  const [geminiReady, setGeminiReady] = useState(false);
 
   useEffect(() => {
     if (!unlocked) navigate('/', { replace: true });
   }, [unlocked, navigate]);
+
+  useEffect(() => {
+    if (!unlocked) return undefined;
+    let alive = true;
+    fetchGeminiStatus().then((ready) => {
+      if (alive) setGeminiReady(ready);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [unlocked]);
 
   // The ledger is the only hard dependency; live stock, trolley stock and the
   // waste report each enrich one section and are allowed to fail on their own
@@ -258,6 +276,8 @@ export default function Dashboard() {
               stockSummary={data.stock}
               items={data.shopItems}
               dim={status.refreshing}
+              insightsKey={geminiReady ? `shop:${rangeKey}:${status.syncedAt ?? 0}` : null}
+              accent={activeTab.chrome}
             />
           ) : (
             <TrolleyPanel
@@ -268,6 +288,8 @@ export default function Dashboard() {
               items={data.trolleyItems}
               waste={data.waste}
               dim={status.refreshing}
+              insightsKey={geminiReady ? `trolley:${rangeKey}:${status.syncedAt ?? 0}` : null}
+              accent={activeTab.chrome}
             />
           )}
         </main>
@@ -278,10 +300,14 @@ export default function Dashboard() {
 
 /* ---------------------------------- shop --------------------------------- */
 
-function ShopPanel({ stats, previous, range, stockSummary, items, dim }) {
+function ShopPanel({ stats, previous, range, stockSummary, items, dim, insightsKey, accent }) {
   const compare = previous ? `vs previous ${range.days} days` : null;
   const stock = useMemo(() => buildStockView(items, stockSummary), [items, stockSummary]);
   const periodWord = stats.granularity === 'day' ? 'day' : 'month';
+  const digest = useMemo(
+    () => (insightsKey ? buildDigest({ section: 'shop', range, stats, previous, stock }) : null),
+    [insightsKey, range, stats, previous, stock]
+  );
 
   return (
     <div className="flex flex-col gap-4" style={{ opacity: dim ? 0.55 : 1, transition: 'opacity 200ms' }}>
@@ -302,6 +328,10 @@ function ShopPanel({ stats, previous, range, stockSummary, items, dim }) {
             : 'No trading recorded in this window'
         }
       />
+
+      {digest && (
+        <InsightsPanel section="shop" cacheKey={insightsKey} digest={digest} accent={accent} />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile
@@ -528,11 +558,18 @@ function StockPill({ out }) {
 
 /* -------------------------------- trolley -------------------------------- */
 
-function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
+function TrolleyPanel({ stats, previous, today, range, items, waste, dim, insightsKey, accent }) {
   const compare = previous ? `vs previous ${range.days} days` : null;
   const periodWord = stats.granularity === 'day' ? 'day' : 'month';
   const kitchen = useMemo(() => buildKitchenView(items, today.itemsSold), [items, today.itemsSold]);
   const wasteView = useMemo(() => buildWasteView(waste, stats.window.startKey), [waste, stats.window.startKey]);
+  const digest = useMemo(
+    () =>
+      insightsKey
+        ? buildDigest({ section: 'trolley', range, stats, previous, kitchen, waste, today })
+        : null,
+    [insightsKey, range, stats, previous, kitchen, waste, today]
+  );
   // Four items standing side by side stays readable for a couple of weeks;
   // past that the same data reads far better as one column per day.
   const stackUnits = stats.buckets.length > 14;
@@ -556,6 +593,10 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
             : 'Nothing sold yet today'
         }
       />
+
+      {digest && (
+        <InsightsPanel section="trolley" cacheKey={insightsKey} digest={digest} accent={accent} />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile

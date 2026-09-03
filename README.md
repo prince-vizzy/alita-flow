@@ -58,6 +58,37 @@ the inventory spreadsheet — see [`apps-script/README.md`](./apps-script/README
 for how to deploy or update it. Point the app at your deployment by setting
 `INVENTORY_API_URL` in `src/config.js`.
 
+## Dashboard insights (Gemini)
+
+The admin dashboard has a **What the numbers say** card on both the Shop and
+Trolley tabs: Gemini writes a short read of whatever range is selected, and
+there's a box under it for asking a question about that same slice.
+
+Only aggregates are sent — totals, the trend series, top items, the stock
+attention list ([`src/lib/dashboardDigest.js`](./src/lib/dashboardDigest.js)).
+The raw ledger never leaves the device. A digest is around 2 KB.
+
+The API key stays on the server. [`api/gemini.js`](./api/gemini.js) is a Vercel
+function that holds it; the browser only ever talks to `/api/gemini`. **Never
+move the key into a `VITE_` variable** — anything in the Vite bundle is
+readable by whoever opens the site.
+
+Setup:
+
+1. Get a key at https://aistudio.google.com/apikey
+2. Vercel → project → Settings → Environment Variables → `GEMINI_API_KEY`
+3. Locally, copy [`.env.example`](./.env.example) to `.env.local`
+
+Without a key the card doesn't render at all and nothing else changes.
+`GEMINI_MODEL` overrides the default `gemini-3.8-flash`.
+
+Note that `npm run dev` (Vite alone) does not serve `/api`, so the card stays
+hidden in normal local development. Use `npx vercel dev` to exercise it.
+
+Summaries are cached per section + range + refresh, so switching tabs or going
+back to a range you've already looked at costs nothing; the ↻ on the card
+forces a rewrite.
+
 ## Offline behavior
 
 - The full app shell and all product photos are precached, so the catalog
