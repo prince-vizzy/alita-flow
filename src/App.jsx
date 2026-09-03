@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Home from './pages/Home';
 import ProductList from './pages/ProductList';
 import ProductDetail from './pages/ProductDetail';
@@ -10,6 +11,7 @@ import InstallPrompt from './components/InstallPrompt';
 export default function App() {
   return (
     <>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<Home />} />
 
@@ -28,6 +30,17 @@ export default function App() {
       <InstallPrompt />
     </>
   );
+}
+
+// The router leaves the window scrolled where the previous screen was, so
+// opening an item from far down the list would land on its page already
+// scrolled past the photo. Every screen starts at the top instead.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
 }
 
 function LegacyProductRedirect() {

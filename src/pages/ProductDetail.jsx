@@ -60,7 +60,10 @@ export default function ProductDetail() {
         </h1>
       </header>
 
-      <main className="w-full max-w-md flex flex-col gap-4">
+      {/* my-auto centres the product between the header and the action bar
+          on a screen taller than it needs; on a short screen there is no free
+          space to share out, so it falls back to a normal top-down scroll. */}
+      <main className="w-full max-w-md my-auto flex flex-col gap-4">
         <div className="photo-tile w-full aspect-[4/3] rounded-[28px] p-6 grid place-items-center overflow-hidden">
           <img
             src={product.image}
