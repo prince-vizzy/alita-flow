@@ -35,6 +35,7 @@ const RAW_TROLLEY = [
   ["Sweet Potatoes", 0, "🍠", 0],
   ["Arrow Roots", 0, "🥔", 0],
   ["Smokie", 0, "🌭", 10],
+  ["Smocha", 0, "🌯", 0],
 ];
 
 export const TROLLEY_PRODUCTS = RAW_TROLLEY.map(([name, price, emoji, regularStock], index) => {

@@ -5,39 +5,49 @@
 //   POST → { text }        a written read of, or an answer about, the digest
 //                          the dashboard sends up
 //
+// Behind the dashboard PIN, both verbs (see api/_pin.js). This route spends
+// money on someone else's key and it is a public URL — for a while it
+// answered anyone who found it.
+//
 // Set GEMINI_API_KEY in the Vercel project's environment variables (and in
 // .env.local for `vercel dev`). GEMINI_MODEL optionally overrides the model.
 
-const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
-const DEFAULT_MODEL = 'gemini-3.8-flash';
+import { callGemini, isGeminiConfigured } from './_gemini.js';
+import { checkPin } from './_pin.js';
 
-// Aggregates only, but the whole book travels with every question — the price
-// list and a lifetime roll-up of every item traded. That lands in the low tens
-// of KB for a shop this size. The cap is here because this route is public:
-// it's the one way a stranger could run up a bill on someone else's key.
 const MAX_DIGEST_BYTES = 250 * 1024;
 const MAX_QUESTION_CHARS = 500;
-const TIMEOUT_MS = 20_000;
 
-export const maxDuration = 30;
+// Twenty seconds was under what this model needs. Measured against the live
+// function, a one-word answer round-trips in about eleven; four sentences off
+// a real digest goes well past twenty, so every summary aborted and the owner
+// only ever saw "took too long". This is a ceiling for a hung call, not a
+// budget — nothing normally runs near it.
+const TIMEOUT_MS = 50_000;
 
+export const maxDuration = 60;
+
+// Shared by both modes. The part describing "book" is only true when the book
+// travels, so it is added per request rather than promised here.
 const SYSTEM_INSTRUCTION = [
   'You are the analyst for Alita Flow, a small hardware shop and food trolley in Kenya.',
-  'The JSON you are given has two parts.',
   '"onScreen" is exactly what the owner is looking at right now: one section (shop or trolley)',
   'over one date range, already aggregated.',
-  '"book" is everything the business holds — the full price list with item codes and current',
-  'stock, the trolley items, every item ever traded with its lifetime revenue, units, spend and',
-  'the day it last sold, monthly totals per business, and the trolley waste log.',
-  'Use "onScreen" for anything about the current view, and "book" for everything else:',
-  'prices, stock levels, item codes, history outside the range, and the other section.',
-  'Both are still only what is in that JSON. Answer from it and nothing else — if it does not',
-  'contain what was asked, say so plainly rather than guessing a number or inventing an item.',
+  'Answer from that JSON and nothing else — if it does not contain what was asked, say so',
+  'plainly rather than guessing a number or inventing an item.',
   'Note that stock counts can be negative where more was sold than the sheet recorded arriving;',
   'that is a bookkeeping gap, not stock on the shelf.',
   'Money is Kenyan shillings, written as "KES 1,200".',
   'Write plain sentences for a busy shopkeeper: no markdown, no headings, no bold, no bullet',
   'characters, no preamble like "Based on the data". Be specific — name the item and the figure.',
+].join(' ');
+
+const BOOK_INSTRUCTION = [
+  '"book" is everything the business holds — the full price list with item codes and current',
+  'stock, the trolley items, every item ever traded with its lifetime revenue, units, spend and',
+  'the day it last sold, monthly totals per business, and the trolley waste log.',
+  'Use "onScreen" for anything about the current view, and "book" for everything else:',
+  'prices, stock levels, item codes, history outside the range, and the other section.',
 ].join(' ');
 
 const SUMMARY_TASK = [
@@ -50,18 +60,19 @@ const SUMMARY_TASK = [
 ].join(' ');
 
 export default async function handler(req, res) {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (req.method === 'GET') {
-    return res.status(200).json({ configured: Boolean(apiKey) });
-  }
-
-  if (req.method !== 'POST') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!apiKey) {
+  const access = checkPin(req);
+  if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+  if (req.method === 'GET') {
+    return res.status(200).json({ configured: isGeminiConfigured() });
+  }
+
+  if (!isGeminiConfigured()) {
     return res
       .status(503)
       .json({ error: 'GEMINI_API_KEY is not set on the server, so insights are switched off.' });
@@ -88,10 +99,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'A digest of the dashboard is required.' });
   }
 
-  const digestJson = JSON.stringify(digest);
-  if (Buffer.byteLength(digestJson, 'utf8') > MAX_DIGEST_BYTES) {
-    return res.status(413).json({ error: 'That view is too large to summarise.' });
-  }
+  // The dashboard sends { onScreen, book }; older bundles sent the on-screen
+  // slice on its own.
+  const onScreen = digest.onScreen ?? digest;
+  const book = digest.book ?? null;
 
   let task = SUMMARY_TASK;
   if (mode === 'ask') {
@@ -103,68 +114,36 @@ export default async function handler(req, res) {
     task = `Answer this question in at most three short sentences: ${asked}`;
   }
 
-  const input = `${task}\n\nDashboard digest:\n${digestJson}`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const upstream = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.GEMINI_MODEL || DEFAULT_MODEL,
-        input,
-        system_instruction: SYSTEM_INSTRUCTION,
-        // Reading a table of totals is not a reasoning problem, and the owner
-        // is waiting on the answer.
-        generation_config: { temperature: 0.4, thinking_level: 'low' },
-        stream: false,
-      }),
-      signal: controller.signal,
-    });
-
-    const payload = await upstream.json().catch(() => null);
-
-    if (!upstream.ok) {
-      // Google's message is aimed at whoever holds the key, not at the
-      // shopkeeper, so it goes to the server log and a plain line comes back.
-      console.error('Gemini error', upstream.status, payload);
-      return res.status(502).json({
-        error:
-          upstream.status === 429
-            ? 'Gemini is rate-limiting this key — try again in a moment.'
-            : 'Gemini could not answer that just now.',
-      });
-    }
-
-    const text = extractText(payload);
-    if (!text) return res.status(502).json({ error: 'Gemini sent back an empty answer.' });
-
-    return res.status(200).json({ text });
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      return res.status(504).json({ error: 'Gemini took too long to answer.' });
-    }
-    console.error('Gemini request failed', err);
-    return res.status(502).json({ error: 'Could not reach Gemini.' });
-  } finally {
-    clearTimeout(timer);
+  // The summary is a read of the period on screen and nothing else, so the
+  // book stays behind: it is tens of KB the model would have to chew through
+  // on every tab and range change to write four sentences the view already
+  // supports. A question does reach past the view, so it travels with one.
+  const sent = mode === 'ask' && book ? { onScreen, book } : { onScreen };
+  const sentJson = JSON.stringify(sent);
+  if (Buffer.byteLength(sentJson, 'utf8') > MAX_DIGEST_BYTES) {
+    return res.status(413).json({ error: 'That view is too large to summarise.' });
   }
-}
 
-// The SDKs expose an `output_text` shortcut, but the raw REST response only
-// carries `steps` — model output is one step among thoughts and tool calls.
-function extractText(payload) {
-  if (!payload || !Array.isArray(payload.steps)) return '';
-  return payload.steps
-    .filter((step) => step?.type === 'model_output' && Array.isArray(step.content))
-    .flatMap((step) => step.content)
-    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text.trim())
-    .join('\n')
-    .trim();
+  const instruction = sent.book ? `${SYSTEM_INSTRUCTION} ${BOOK_INSTRUCTION}` : SYSTEM_INSTRUCTION;
+  const input = `${task}\n\nDashboard digest:\n${sentJson}`;
+
+  const result = await callGemini({ input, system: instruction, timeoutMs: TIMEOUT_MS });
+
+  if (result.ok) return res.status(200).json({ text: result.text });
+
+  if (result.timedOut) {
+    return res.status(504).json({
+      error:
+        mode === 'ask'
+          ? 'Gemini took too long on that one — a shorter, more specific question usually lands.'
+          : 'Gemini took too long to answer. Tap refresh to try again.',
+    });
+  }
+
+  return res.status(502).json({
+    error:
+      result.status === 429
+        ? 'Gemini is rate-limiting this key — try again in a moment.'
+        : result.error,
+  });
 }

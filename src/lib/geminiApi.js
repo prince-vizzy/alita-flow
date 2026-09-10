@@ -1,5 +1,11 @@
 // Talks to /api/gemini, the serverless function that holds the API key. The
 // key is deliberately not reachable from here — see api/gemini.js.
+//
+// Every call carries the dashboard PIN, which the server checks: the route
+// spends money on someone else's key, and it used to answer anyone who found
+// the URL.
+
+import { adminHeaders } from './adminGate';
 
 const ENDPOINT = '/api/gemini';
 
@@ -7,7 +13,7 @@ const ENDPOINT = '/api/gemini';
 // a dev server with no functions running, so the dashboard just stays quiet.
 export async function fetchGeminiStatus() {
   try {
-    const res = await fetch(ENDPOINT);
+    const res = await fetch(ENDPOINT, { headers: adminHeaders() });
     if (!res.ok) return false;
     const data = await res.json();
     return Boolean(data.configured);
@@ -19,7 +25,7 @@ export async function fetchGeminiStatus() {
 async function post(payload, signal) {
   const res = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...adminHeaders() },
     body: JSON.stringify(payload),
     signal,
   });

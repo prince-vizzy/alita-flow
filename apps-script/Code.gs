@@ -12,6 +12,13 @@ const MANUAL_LEDGER_SHEET = 'Manual-Ledger';
 const TROLLEY_INVENTORY_SHEET = 'Trolley Inventory';
 const TROLLEY_LOG_SHEET = 'Trolley Log';
 
+/* ---------------------------- Push notifications -------------------------- */
+
+// Where each device that wants the morning summary is filed. Written by the
+// browser when the owner turns notifications on; read by the Vercel cron,
+// which is the only thing that ever needs the whole list.
+const PUSH_SHEET = 'Push Subscriptions';
+
 // Seeded by setupTrolleySheets(). [name, opening regular stock] — matches
 // what's currently on hand per the shared Inventory tab. Add more rows in
 // the sheet itself later; this list is only used the one time the tab gets
@@ -40,6 +47,15 @@ function doGet(e) {
       return jsonOutput(dashboardData());
     }
 
+    // The list of devices, for the notification cron only. A subscription is
+    // useless without the VAPID private key, but there is no reason to hand
+    // out the owner's device endpoints to anyone who guesses the query, so
+    // this one read is behind a shared secret.
+    if (params.section === 'push') {
+      requirePushSecret(params.key);
+      return jsonOutput({ subscriptions: pushSubscriptions() });
+    }
+
     return jsonOutput({ items: shopItems() });
   } catch (err) {
     return jsonOutput({ error: String(err.message || err) });
@@ -50,6 +66,14 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     const action = body.action || 'sell';
+
+    // Subscribing is the browser saying "notify this device" — it comes with
+    // the endpoint the push service just minted, which is the credential, so
+    // there is nothing here for the secret to protect.
+    if (body.section === 'push') {
+      if (action === 'unsubscribe') return jsonOutput(pushUnsubscribe(body.endpoint));
+      return jsonOutput(pushSubscribe(body));
+    }
 
     if (body.section === 'trolley') {
       if (action === 'addStock') return trolleyAction(body, 'restock');
@@ -69,9 +93,9 @@ function doPost(e) {
 
 // Inventory columns: A flag, B No., C Item Name, D Unit Selling Price,
 // E Business, F Category (formula), G Added (formula), H Cooked (formula),
-// I Sold (formula), J Spoilt (formula), K Remaining (formula). F-K are array
-// formulas driven by Tsn Ledgers, so this tab is read-only from here — never
-// write to it. Column layout here must track the sheet exactly — check it
+// I Sold (formula), J Spoilt (formula), K Remaining (formula), L Code (the
+// item code, plain). F-K are array formulas driven by Tsn Ledgers, so this
+// tab is read-only from here — never write to it. Column layout here must track the sheet exactly — check it
 // with a fresh xlsx export before trusting this comment blindly, since it's
 // already shifted twice.
 function shopItems() {
@@ -192,18 +216,16 @@ function dashboardData() {
       expenses: Number(row[14]) || 0, // Q
     }))
     // Tsn Ledgers' own VSTACK/HSTACK formula merges in Trolley Log rows too
-    // (Source = "System Logs"), but that block produces one fewer column
-    // than the Manual-Ledger block (no Amount field), so everything from M
-    // onward lands one column left of where this fixed-index read expects —
-    // O ends up holding "Stock" (Item Type) instead of the real Tsn. Type,
-    // and the Sales/Expenses formulas (Q/R) never fire for these rows. That
-    // currently makes them inert here (type never equals 'Sales'/'Purchases')
-    // rather than double-counted, but it's an accident of a formula bug, not
-    // something to depend on — trolleyLogAsTransactions() below already
-    // reads Trolley Log directly and correctly, so only the "System Logs"
-    // rows are dropped here. Filtering by business (not source) would also
-    // catch legitimate historical Trolley entries that came in correctly
-    // through Manual-Ledger before Trolley Log existed — those stay.
+    // (Source = "System Logs"). trolleyLogAsTransactions() below reads Trolley
+    // Log directly, so those rows are dropped here — keeping both would count
+    // every trolley sale twice. This filter is load-bearing: the merge used
+    // to be one column short, which left these rows inert here by accident,
+    // but it now carries Trolley Log's Amount and "Ammended Type" columns and
+    // lines up, so they arrive with a real Tsn. Type. And that type is
+    // "Sales" for restocks as well as sells, so without this a restock would
+    // read as revenue. Filtering by business (not source) would also catch
+    // legitimate historical Trolley entries that came in through
+    // Manual-Ledger before Trolley Log existed — those stay.
     .filter((t) => t.source !== 'System Logs')
     .map(({ source, ...t }) => t);
 
@@ -236,10 +258,11 @@ function dashboardData() {
 //
 // This also sidesteps a real limitation of the sheet's own Tsn-Ledgers merge:
 // its Business Type column is a formula that classifies purely by matching
-// the item name against Inventory's Trolley rows. Ingredient expenses
-// (onions, tomatoes, …) were deliberately never added to Inventory, so that
-// regex would tag them as Hardware. Reading Trolley Log directly and
-// hardcoding business: 'Trolley' here avoids that misclassification.
+// the item name against Inventory's Trolley rows, so anything logged here
+// that has no Trolley row on Inventory (an ingredient like Barbecue Sauce, or
+// a trolley item added only to Trolley Inventory) would be tagged Hardware.
+// Reading Trolley Log directly and hardcoding business: 'Trolley' here avoids
+// that misclassification.
 function trolleyLogAsTransactions(ss) {
   const logSheet = ss.getSheetByName(TROLLEY_LOG_SHEET);
   if (!logSheet) return [];
@@ -318,7 +341,10 @@ function trolleyPricesFromInventory(ss) {
 // write target for shop sales/restocks is 'Manual-Ledger':
 // A flag (unused), B Partner, C PIN (unused — no PIN concept in the app,
 // left blank), D Doc No., E Date, F Item, G Qty, H Amount, I UoM,
-// J Tsn. Type, K Item Type — all plain values, no formulas.
+// J Tsn. Type, K Item Type, L Narration (left blank — Tsn Ledgers doesn't
+// read it) — all plain values, no formulas. The "Shop Ledger Entry" tab has
+// the same rows in a different column order, but no formula reads it yet;
+// Tsn Ledgers still merges Manual-Ledger, so this stays the write target.
 // 'Manual-Ledger' has the same array-formula-driven FilterDatabase range
 // trick (spans to row 1473) that made getLastRow() unreliable on the old
 // Tsn Ledgers, so find the first row where Item (F) is genuinely blank
@@ -330,17 +356,8 @@ function trolleyPricesFromInventory(ss) {
 // column-index comment in this file blindly.
 function appendLedgerRow(ss, entry) {
   const sheet = mustGetSheet(ss, MANUAL_LEDGER_SHEET);
-  const lastRow = sheet.getLastRow();
-  const itemCol = sheet.getRange(2, 6, lastRow - 1, 1).getValues(); // F
-
-  let targetRow = -1;
-  for (let i = 0; i < itemCol.length; i++) {
-    if (!itemCol[i][0]) {
-      targetRow = i + 2;
-      break;
-    }
-  }
-  if (targetRow === -1) {
+  const targetRow = firstBlankRow(sheet, 6); // F — Item
+  if (!targetRow) {
     throw new Error('Manual-Ledger is full — no blank row left to record this in');
   }
 
@@ -494,8 +511,7 @@ function trolleyAction(body, type) {
     });
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  mustGetSheet(ss, TROLLEY_LOG_SHEET).appendRow([when, name, type, qty, unit, amount]);
+  appendTrolleyLogRow(SpreadsheetApp.getActiveSpreadsheet(), [when, name, type, qty, unit, amount]);
   SpreadsheetApp.flush();
 
   const after = trolleyState();
@@ -520,8 +536,7 @@ function trolleyExpense(body) {
   }
 
   const when = body.timestamp ? new Date(body.timestamp) : new Date();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  mustGetSheet(ss, TROLLEY_LOG_SHEET).appendRow([when, name, 'expense', amount, 'KES']);
+  appendTrolleyLogRow(SpreadsheetApp.getActiveSpreadsheet(), [when, name, 'expense', amount, 'KES']);
   SpreadsheetApp.flush();
 
   return jsonOutput({ ok: true });
@@ -553,6 +568,100 @@ function trolleyWaste(days) {
     .filter((day) => day.total > 0);
 }
 
+/* --------------------------- Push notification store ---------------------- */
+
+// One row per device that has asked for the morning summary:
+//
+//   Endpoint | p256dh | auth | Label | Subscribed
+//
+// The endpoint is the identity — the push service mints a fresh one whenever
+// the browser re-subscribes, so an old row for a device that has moved on is
+// dead weight rather than a duplicate. The cron prunes those itself: a push
+// service answers 404 or 410 for an endpoint it has retired, and the notifier
+// unsubscribes on that.
+function pushSheet(ss) {
+  const existing = ss.getSheetByName(PUSH_SHEET);
+  if (existing) return existing;
+
+  const sheet = ss.insertSheet(PUSH_SHEET);
+  sheet.appendRow(['Endpoint', 'p256dh', 'auth', 'Label', 'Subscribed']);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function pushSubscriptions() {
+  const sheet = pushSheet(SpreadsheetApp.getActiveSpreadsheet());
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  return sheet
+    .getRange(2, 1, lastRow - 1, 4)
+    .getValues()
+    .filter(function (row) {
+      return row[0] && row[1] && row[2];
+    })
+    .map(function (row) {
+      return {
+        endpoint: String(row[0]),
+        keys: { p256dh: String(row[1]), auth: String(row[2]) },
+        label: String(row[3] || ''),
+      };
+    });
+}
+
+// Upsert by endpoint. A browser that re-subscribes with the same endpoint
+// after a permission reset should refresh its keys, not add a second row.
+function pushSubscribe(body) {
+  const sub = body.subscription || {};
+  const keys = sub.keys || {};
+  if (!sub.endpoint || !keys.p256dh || !keys.auth) {
+    throw new Error('A push subscription needs an endpoint and both keys.');
+  }
+
+  const sheet = pushSheet(SpreadsheetApp.getActiveSpreadsheet());
+  const row = ['' + sub.endpoint, '' + keys.p256dh, '' + keys.auth, body.label || '', new Date()];
+  const at = pushRowFor(sheet, sub.endpoint);
+
+  if (at) sheet.getRange(at, 1, 1, 5).setValues([row]);
+  else sheet.appendRow(row);
+
+  SpreadsheetApp.flush();
+  return { ok: true, devices: Math.max(sheet.getLastRow() - 1, 0) };
+}
+
+function pushUnsubscribe(endpoint) {
+  if (!endpoint) throw new Error('An endpoint is required to unsubscribe.');
+
+  const sheet = pushSheet(SpreadsheetApp.getActiveSpreadsheet());
+  const at = pushRowFor(sheet, endpoint);
+  if (at) {
+    sheet.deleteRow(at);
+    SpreadsheetApp.flush();
+  }
+  return { ok: true, removed: Boolean(at) };
+}
+
+// 1-based sheet row for an endpoint, or 0 if it isn't filed yet.
+function pushRowFor(sheet, endpoint) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  const endpoints = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < endpoints.length; i++) {
+    if (String(endpoints[i][0]) === String(endpoint)) return i + 2;
+  }
+  return 0;
+}
+
+// Set PUSH_SECRET under Project Settings -> Script Properties. Without it the
+// device list stays sealed rather than falling open, so a half-finished setup
+// fails loudly instead of quietly publishing.
+function requirePushSecret(given) {
+  const expected = PropertiesService.getScriptProperties().getProperty('PUSH_SECRET');
+  if (!expected) throw new Error('PUSH_SECRET is not set in the script properties.');
+  if (String(given || '') !== expected) throw new Error('Not authorised.');
+}
+
 /* --------------------------- One-time trolley setup ---------------------- */
 
 // Run this once from the Apps Script editor (select it in the function
@@ -580,6 +689,33 @@ function setupTrolleySheets() {
 }
 
 /* --------------------------------- Helpers ------------------------------- */
+
+// First row below the header whose `col` cell is genuinely blank, or 0 if
+// there is none. getLastRow() can't be trusted to find it on these tabs: an
+// array formula that writes "" down a whole column counts as content, so it
+// reports the bottom of the formula's range instead of the last real entry.
+function firstBlankRow(sheet, col) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 2;
+  const values = sheet.getRange(2, col, lastRow - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (!values[i][0]) return i + 2;
+  }
+  return 0;
+}
+
+// Trolley Log's "Ammended Type" column (G) is an array formula over the whole
+// column, so appendRow() lands below the bottom of the grid rather than under
+// the last entry — it already left rows 27-999 empty once. Fill the first
+// blank row instead, writing A:F only; G computes itself and must never be
+// written to. Tsn Ledgers only merges Trolley Log down to row 1473, so rows
+// wasted in a gap are rows that eventually drop out of it.
+function appendTrolleyLogRow(ss, row) {
+  const sheet = mustGetSheet(ss, TROLLEY_LOG_SHEET);
+  const at = firstBlankRow(sheet, 2); // B — Item
+  if (at) sheet.getRange(at, 1, 1, row.length).setValues([row]);
+  else sheet.appendRow(row);
+}
 
 function mustGetSheet(ss, name) {
   const sheet = ss.getSheetByName(name);

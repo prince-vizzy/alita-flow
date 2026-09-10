@@ -7,6 +7,7 @@ import TrolleyList from './pages/TrolleyList';
 import TrolleyDetail from './pages/TrolleyDetail';
 import Dashboard from './pages/Dashboard';
 import InstallPrompt from './components/InstallPrompt';
+import { isAdminUnlocked } from './lib/adminGate';
 
 export default function App() {
   return (
@@ -21,7 +22,7 @@ export default function App() {
         <Route path="/trolley" element={<TrolleyList />} />
         <Route path="/trolley/product/:id" element={<TrolleyDetail />} />
 
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<PinOnly><Dashboard /></PinOnly>} />
 
         {/* Before sections existed the shop lived at the root, so keep old
             bookmarks and home-screen shortcuts working. */}
@@ -30,6 +31,14 @@ export default function App() {
       <InstallPrompt />
     </>
   );
+}
+
+// The dashboard opens from a long-press on the home screen's title and the
+// admin PIN. Typing /dashboard without that lands back on the home screen.
+// This only hides the page — the routes behind it check the PIN themselves.
+function PinOnly({ children }) {
+  if (!isAdminUnlocked()) return <Navigate to="/" replace />;
+  return children;
 }
 
 // The router leaves the window scrolled where the previous screen was, so

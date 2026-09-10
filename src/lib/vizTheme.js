@@ -4,16 +4,18 @@
 // against this app's own chart surface (#0d0f12) rather than the skill's
 // default surface:
 //
-//   node scripts/validate_palette.js "#3987e5,#d95926,#199e70,#c98500" \
-//     --mode dark --surface "#0d0f12"
-//   → all checks PASS (worst adjacent CVD ΔE 8.4 protan, normal-vision 19.8)
+//   node scripts/validate_palette.js "#3987e5,#d95926,#199e70,#c98500,#d55181" \
+//     --mode dark --surface "#1c2721"   (and again with "#0d0f12")
+//   → all checks PASS on both (worst adjacent CVD ΔE 8.4 protan,
+//     normal-vision 19.3)
 //
-// The four categorical slots are assigned in fixed order and never cycled or
+// The five categorical slots are assigned in fixed order and never cycled or
 // re-sorted by rank, so an item keeps its color when a filter changes which
-// items are on screen.
+// items are on screen. The fifth (magenta, the palette's own slot 5) is there
+// for Smocha — the trolley's fifth item; without it those bars had no color.
 export const SURFACE = '#1c2721';
 
-export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
+export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
 
 // Named roles for the two-series charts every panel shares, so "sales is
 // blue, money going out is orange" holds across the whole dashboard.

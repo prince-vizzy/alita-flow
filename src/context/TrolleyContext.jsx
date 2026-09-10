@@ -25,6 +25,26 @@ function today() {
   return new Date().toLocaleDateString('en-CA');
 }
 
+// The item list always comes from TROLLEY_PRODUCTS; the cache only lends its
+// figures to items it already knew. Unlike the shop, the trolley can't just
+// drop its cache when the list changes: it holds counts the server hasn't
+// seen yet (a cook or sale made offline), and losing them would block selling
+// what was just cooked. So a newly added item turns up on every device, and
+// one taken off the list goes away, without touching anyone's pending counts.
+function withCatalog(cached) {
+  const byName = new Map(cached.map((p) => [p.name, p]));
+  return TROLLEY_PRODUCTS.map((p) => {
+    const known = byName.get(p.name);
+    if (!known) return p;
+    return {
+      ...p,
+      price: known.price,
+      regularStock: known.regularStock,
+      cookedStock: known.cookedStock,
+    };
+  });
+}
+
 function loadCachedProducts() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -35,9 +55,9 @@ function loadCachedProducts() {
     // it's already stale — the server will have rolled it into waste — so
     // show zero rather than yesterday's leftovers.
     if (day !== today()) {
-      return products.map((p) => ({ ...p, cookedStock: 0 }));
+      return withCatalog(products.map((p) => ({ ...p, cookedStock: 0 })));
     }
-    return products;
+    return withCatalog(products);
   } catch {
     return null;
   }

@@ -83,6 +83,20 @@ export async function logTrolleyExpense(name, amount, timestamp) {
   return postAction({ section: 'trolley', action: 'expense', name, qty: amount, timestamp });
 }
 
+/* ---------------------------- Push notifications -------------------------- */
+
+// The endpoint the push service just minted for this device, filed next to
+// everything else the app stores. It goes straight to the sheet rather than
+// through /api — the Vercel function only ever reads this list, at six in
+// the morning, and there is nothing for it to add on the way in.
+export async function subscribeToPush(subscription, label) {
+  return postAction({ section: 'push', action: 'subscribe', subscription, label });
+}
+
+export async function unsubscribeFromPush(endpoint) {
+  return postAction({ section: 'push', action: 'unsubscribe', endpoint });
+}
+
 /* -------------------------------- Dashboard ------------------------------- */
 
 export async function fetchDashboardData() {

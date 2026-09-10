@@ -17,6 +17,12 @@ import { INK, STATUS } from '../lib/vizTheme';
 // Opening never takes focus. On a phone that would slide the keyboard up over
 // the note the moment it opened — the reading comes first, and the keyboard
 // arrives when the box is tapped.
+//
+// Everything here sits clear of the section bar that now holds the bottom of
+// the screen: the mark rides just above it, and the note and the panel above
+// the mark. All of it leaves on the way down the page along with the bar —
+// except an open conversation, which is the one thing on screen the reader
+// actually meant to be looking at.
 
 const PLACEHOLDERS = {
   shop: 'Which items should I reorder first?',
@@ -31,7 +37,7 @@ const HAIRLINE = '1px solid rgba(255, 255, 255, 0.14)';
 let lastId = 0;
 const nextId = () => (lastId += 1);
 
-export default function InsightsDock({ section, cacheKey, digest, accent }) {
+export default function InsightsDock({ section, cacheKey, digest, accent, hidden = false }) {
   const [open, setOpen] = useState(false);
   const [thread, setThread] = useState([]);
   const [summaryState, setSummaryState] = useState('idle'); // idle | loading | error
@@ -138,8 +144,8 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
     <>
       {/* What it made of the range, offered rather than inserted — it can be
           waved away without opening anything. */}
-      {!open && opener && !peekDismissed && (
-        <div className="fixed z-40 bottom-24 right-5 w-[min(17rem,calc(100vw-2.5rem))]">
+      {!open && opener && !peekDismissed && !hidden && (
+        <div className="fixed z-40 bottom-40 right-5 w-[min(17rem,calc(100vw-2.5rem))]">
           <div className="popover relative rounded-[20px] pl-4 pr-9 py-3.5">
             <button
               onClick={() => setPeekDismissed(true)}
@@ -176,7 +182,7 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
         <div
           role="dialog"
           aria-label={`Ask Gemini about the ${section} numbers`}
-          className="popover fixed z-40 inset-x-3 bottom-24 sm:left-auto sm:right-5 sm:w-[26rem] rounded-[26px] flex flex-col max-h-[68dvh]"
+          className="popover fixed z-40 inset-x-3 bottom-40 sm:left-auto sm:right-5 sm:w-[26rem] rounded-[26px] flex flex-col max-h-[60dvh]"
         >
           <header className="flex items-center gap-2.5 px-4 py-3 border-b border-white/10">
             <img src={logo} alt="" className="w-6 h-6 shrink-0 object-contain" />
@@ -252,10 +258,16 @@ export default function InsightsDock({ section, cacheKey, digest, accent }) {
 
       {/* The mark itself is the handle. The bob lives on the wrapper so the
           button is free to use transform for its own press feedback. */}
-      <span className={`fixed z-40 bottom-5 right-5 ${open ? '' : 'dock-bob'}`}>
+      <span
+        className={`fixed z-40 bottom-21 right-5 transition-[transform,opacity] duration-300 ease-out ${
+          open ? '' : 'dock-bob'
+        } ${hidden ? 'translate-y-[200%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}
+        aria-hidden={hidden}
+      >
         <button
           onClick={() => setOpen((prev) => !prev)}
           aria-expanded={open}
+          tabIndex={hidden ? -1 : 0}
           aria-label={open ? 'Close Alita Flow insights' : 'Ask Alita Flow about these numbers'}
           className="glass-strong relative block w-14 h-14 rounded-full grid place-items-center shadow-2xl transition-transform duration-200 active:scale-95 hover:bg-white/[0.13]"
           style={{ borderColor: `color-mix(in srgb, ${accent} 34%, transparent)` }}

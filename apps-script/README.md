@@ -11,6 +11,7 @@ It serves both sections of the app:
 | Shop | `Inventory` (rows where Business = Hardware) | `Manual-Ledger` — one row per sale (Tsn. Type = Sales) or restock (Tsn. Type = Purchases), which `Tsn Ledgers` then absorbs via its own formula |
 | Trolley | `Inventory` (price only, rows where Business = Trolley), `Trolley Inventory`, `Trolley Log` | `Trolley Log` |
 | Dashboard | `Tsn Ledgers` (Hardware rows only, raw), `Inventory` (stock counts, Trolley prices), `Trolley Log` | — (read-only) |
+| Notifications | `Push Subscriptions` | `Push Subscriptions` — one row per device that wants the morning summary |
 
 `?section=dashboard` ships the raw transaction rows rather than pre-aggregating
 them — the `/dashboard` page does the monthly/business grouping client-side,
@@ -22,18 +23,22 @@ returning it — `cook` events are skipped since they're an internal transfer,
 not money changing hands. This is what feeds the Trolley section on the
 `/dashboard` page.
 
-`dashboardData()` explicitly drops any `business === 'Trolley'` row it reads
-from `Tsn Ledgers` itself. That sheet's own merge formula (its Source column)
-also pulls in Trolley Log rows, but its Trolley block produces one column
-fewer than its Manual-Ledger block, so every fixed-index read past that point
-lands one column off *only* for those rows — right now that just makes them
-inert (the misread Tsn. Type never matches `Sales`/`Purchases`), but relying
-on that by accident is fragile. `trolleyLogAsTransactions()` already reads
-`Trolley Log` directly and correctly, so Trolley data only ever comes from
-there.
+`dashboardData()` explicitly drops the `Source = "System Logs"` rows it reads
+from `Tsn Ledgers` itself. That sheet's own merge formula also pulls in
+Trolley Log rows, and since Trolley Log gained its Amount and "Ammended Type"
+columns those rows line up with a real Tsn. Type. Keeping them would count
+every trolley sale twice, and "Ammended Type" maps `restock` to `Sales`, so
+restocks would count as revenue too. `trolleyLogAsTransactions()` reads
+`Trolley Log` directly, so Trolley data only ever comes from there.
+
+Trolley Log writes go into the first row whose Item cell is blank rather than
+through `appendRow()`. The "Ammended Type" array formula fills its column down
+to the bottom of the grid, so `appendRow()` lands below that instead of
+under the last entry. It has already left rows 27–999 empty once, and
+`Tsn Ledgers` only merges Trolley Log down to row 1473.
 
 The `/dashboard` page itself is not linked from the home screen. It's opened
-by long-pressing the "Alita Flow" logo and entering the PIN (`src/lib/adminGate.js`).
+by long-pressing the "Alita Flow" title and entering the PIN, which the server checks (`api/_pin.js`).
 
 Shop items and their live stock all live on the single `Inventory` tab,
 distinguished by a Business column (`Hardware` vs `Trolley`). Trolley item
@@ -74,8 +79,9 @@ press **Run**. It creates:
 - **Trolley Inventory** — `No. | Item Name | Unit Price | Opening Regular`,
   seeded with the current trolley items (Eggs, Sweet Potatoes, Arrow Roots,
   Smokie) and their current on-hand quantities.
-- **Trolley Log** — `Timestamp | Item | Type | Qty | Unit`, where Type is
-  `restock`, `cook` or `sell`.
+- **Trolley Log** — `Timestamp | Item | Type | Qty | Unit | Amount`, where
+  Type is `restock`, `cook`, `sell` or `expense`. The sheet has since added a
+  formula column G, "Ammended Type", which the app never writes to.
 
 Re-running it is safe; it skips tabs that already exist. Prices weren't set
 for any trolley item yet, so fill in the real **Unit Price** for each one
@@ -93,6 +99,29 @@ by itself at midnight — there's no scheduled trigger to set up and nothing to
 reset by hand. Anything cooked on an earlier day that was never sold is that
 day's waste, which the app reads back through
 `?section=trolley&report=waste&days=7`.
+
+## 3b. Set PUSH_SECRET (only if you want morning notifications)
+
+The morning summary cron has to read the list of subscribed devices, and that
+is the one request here that returns something worth keeping private. It is
+behind a shared secret.
+
+In the Apps Script editor: **Project Settings → Script Properties → Add script
+property**, name `PUSH_SECRET`, value any long random string. Put the same
+value in the Vercel project as `PUSH_SECRET`.
+
+The `Push Subscriptions` tab creates itself the first time a device subscribes
+— there is nothing to run. Its columns are:
+
+    Endpoint | p256dh | auth | Label | Subscribed
+
+The endpoint is the identity. A browser that re-subscribes with the same
+endpoint updates its row rather than adding a second one, and the notifier
+deletes rows the push service reports as gone (404/410) — a reinstalled app or
+a new phone cleans itself up.
+
+Skipping this step costs nothing else: subscribing still works, the scheduled
+send just refuses with `PUSH_SECRET is not set in the script properties.`
 
 ## 4. Deploy as a Web App
 

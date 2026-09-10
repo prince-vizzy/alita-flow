@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ShoppingCart, Store, WifiOff } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { useTrolley } from '../context/TrolleyContext';
-import { ADMIN_PIN, unlockAdmin } from '../lib/adminGate';
+import { isAdminUnlocked, unlockAdmin } from '../lib/adminGate';
 import InstallButton from '../components/InstallButton';
 
 const LONG_PRESS_MS = 600;
@@ -18,8 +18,14 @@ export default function Home() {
   const shopOut = shopProducts.filter((p) => p.stock === 0).length;
   const cookedNow = trolleyProducts.reduce((sum, p) => sum + p.cookedStock, 0);
 
+  // Already unlocked this session: straight through, no second PIN.
+  const openDashboard = () => {
+    if (isAdminUnlocked()) navigate('/dashboard');
+    else setPinOpen(true);
+  };
+
   const startPress = () => {
-    pressTimer.current = setTimeout(() => setPinOpen(true), LONG_PRESS_MS);
+    pressTimer.current = setTimeout(openDashboard, LONG_PRESS_MS);
   };
   const cancelPress = () => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -81,7 +87,6 @@ export default function Home() {
         <PinModal
           onClose={() => setPinOpen(false)}
           onSuccess={() => {
-            unlockAdmin();
             setPinOpen(false);
             navigate('/dashboard');
           }}
@@ -122,15 +127,26 @@ function SectionCard({ accent, icon: Icon, title, subtitle, stats, onClick }) {
 function PinModal({ onClose, onSuccess }) {
   const [pin, setPin] = useState('');
   const [shake, setShake] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [problem, setProblem] = useState(null);
 
-  const submit = (value) => {
-    if (value === ADMIN_PIN) {
-      onSuccess();
-    } else {
+  // The PIN is checked by the server, so there is a moment between the fourth
+  // digit and the answer; the field holds still for it rather than taking more.
+  const submit = async (value) => {
+    setChecking(true);
+    setProblem(null);
+    try {
+      if (await unlockAdmin(value)) {
+        onSuccess();
+        return;
+      }
       setShake(true);
-      setPin('');
       setTimeout(() => setShake(false), 400);
+    } catch (err) {
+      setProblem(err.message);
     }
+    setPin('');
+    setChecking(false);
   };
 
   const handleChange = (e) => {
@@ -148,16 +164,21 @@ function PinModal({ onClose, onSuccess }) {
         className={`sheet w-full max-w-xs rounded-[28px] p-6 shadow-2xl ${shake ? 'animate-[shake_0.4s]' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-center text-sm text-ink-2 mb-4">Enter admin PIN</p>
+        <p className="text-center text-sm text-ink-2 mb-4">
+          {checking ? 'Checking…' : 'Enter admin PIN'}
+        </p>
         <input
           type="password"
           inputMode="numeric"
           autoFocus
           value={pin}
           onChange={handleChange}
+          readOnly={checking}
           maxLength={4}
-          className="w-full text-center text-2xl tracking-[0.6em] bg-transparent border-b border-white/20 focus:border-sage outline-none py-2 text-ink"
+          aria-label="Admin PIN"
+          className="w-full text-center text-2xl tracking-[0.6em] bg-transparent border-b border-white/20 focus:border-sage outline-none py-2 text-ink read-only:opacity-50"
         />
+        {problem && <p className="mt-3 text-center text-xs text-[#e88b8b]">{problem}</p>}
         <button
           onClick={onClose}
           className="mt-5 w-full text-xs text-ink-3 hover:text-ink transition-colors"

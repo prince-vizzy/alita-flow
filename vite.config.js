@@ -9,10 +9,16 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      // injectManifest, not the generated worker: src/sw.js has to handle the
+      // push event for the morning summary, and a generated worker has no
+      // room for that.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'autoUpdate',
       devOptions: { enabled: true, type: 'module' },
       includeAssets: ['logo.svg', 'apple-touch-icon.png'],
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest}'],
       },
       manifest: {

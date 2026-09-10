@@ -10,6 +10,8 @@ import {
   PackageX,
   Receipt,
   RefreshCw,
+  ShoppingCart,
+  Store,
   TrendingUp,
   Wallet,
   WifiOff,
@@ -21,11 +23,12 @@ import {
   fetchTrolleyWaste,
   isInventoryApiConfigured,
 } from '../lib/inventoryApi';
-import { isAdminUnlocked } from '../lib/adminGate';
 import { PRODUCTS } from '../data/products';
 import { fetchGeminiStatus } from '../lib/geminiApi';
 import { buildBook, buildDigest } from '../lib/dashboardDigest';
 import InsightsDock from '../components/InsightsDock';
+import useHideOnScroll from '../lib/useHideOnScroll';
+import MorningSummary from '../components/MorningSummary';
 import StatTile from '../components/StatTile';
 import HeroStat from '../components/HeroStat';
 import ChartCard, { DataTable } from '../components/charts/ChartCard';
@@ -62,36 +65,67 @@ const LOW_STOCK_AT = 3;
 // Fixed item order for the trolley's grouped bars — an item keeps its color
 // slot whatever sold on a given day, so the reader's "eggs are blue" holds
 // across every range and every chart on the panel.
-const TROLLEY_ITEM_ORDER = ['Eggs', 'Sweet Potatoes', 'Arrow Roots', 'Smokie'];
+const TROLLEY_ITEM_ORDER = ['Eggs', 'Sweet Potatoes', 'Arrow Roots', 'Smokie', 'Smocha'];
 
 // Section identity, carried over from the home screen. Chrome only — tabs and
 // the page title — never a chart mark: neither hue sits in the validated
 // lightness band for marks on this surface.
 const TABS = [
-  { key: 'shop', label: 'Shop', chrome: 'var(--color-shop)' },
-  { key: 'trolley', label: 'Trolley', chrome: 'var(--color-trolley)' },
+  { key: 'shop', label: 'Shop', chrome: 'var(--color-shop)', icon: Store },
+  { key: 'trolley', label: 'Trolley', chrome: 'var(--color-trolley)', icon: ShoppingCart },
 ];
 
 const WASTE_DAYS = 14;
 
+// The last load, kept so the dashboard opens onto it at once. The sheet takes
+// several seconds to answer four reads — longer on a phone's connection — and
+// the page used to sit on "Loading…" for all of it, every time. Now it shows
+// what it had and refreshes underneath, the spinner in the header saying so.
+const CACHE_KEY = 'alita-flow-dashboard-cache';
+
+function loadCached() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return Array.isArray(cached?.data?.rows) ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCached(data, syncedAt) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, syncedAt }));
+  } catch {
+    // Full or blocked storage only costs the next open its head start.
+  }
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [unlocked] = useState(isAdminUnlocked);
+  const [cached] = useState(loadCached);
   const [tab, setTab] = useState('shop');
   const [rangeKey, setRangeKey] = useState('30d');
-  const [data, setData] = useState(null);
-  const [status, setStatus] = useState({ loading: true, refreshing: false, error: null, syncedAt: null });
+  const [data, setData] = useState(() => cached?.data ?? null);
+  const [status, setStatus] = useState(() => ({
+    loading: !cached,
+    refreshing: Boolean(cached),
+    error: null,
+    syncedAt: cached?.syncedAt ?? null,
+  }));
+  // Whether what's on screen came from the sheet on this visit rather than
+  // from the cache. Insights wait for it: a read written about the cached
+  // numbers would be replaced seconds later, and pay Gemini twice to do it.
+  const [fresh, setFresh] = useState(false);
   // Whether the server holds a Gemini key. Nothing about the insights panel
   // renders until it says yes, so a deploy without the key looks like a
   // dashboard that simply never had one.
   const [geminiReady, setGeminiReady] = useState(false);
 
+  // Getting here at all means the PIN was accepted this session — see
+  // <PinOnly> in App.jsx. The routes behind the page check it again.
   useEffect(() => {
-    if (!unlocked) navigate('/', { replace: true });
-  }, [unlocked, navigate]);
-
-  useEffect(() => {
-    if (!unlocked) return undefined;
     let alive = true;
     fetchGeminiStatus().then((ready) => {
       if (alive) setGeminiReady(ready);
@@ -99,7 +133,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [unlocked]);
+  }, []);
 
   // The ledger is the only hard dependency; live stock, trolley stock and the
   // waste report each enrich one section and are allowed to fail on their own
@@ -120,28 +154,38 @@ export default function Dashboard() {
     ]);
 
     if (dashboard.status === 'rejected') {
-      setStatus({ loading: false, refreshing: false, error: dashboard.reason.message, syncedAt: null });
+      // Whatever is already on screen stays there, stamped with when it was
+      // really synced, rather than being thrown away over a failed refresh.
+      setStatus((prev) => ({
+        loading: false,
+        refreshing: false,
+        error: dashboard.reason.message,
+        syncedAt: prev.syncedAt,
+      }));
       return;
     }
 
-    setData({
+    const next = {
       rows: normalize(dashboard.value.transactions),
       stock: dashboard.value.stock,
       shopItems: shopItems.status === 'fulfilled' ? shopItems.value : null,
       trolleyItems: trolleyItems.status === 'fulfilled' ? trolleyItems.value : null,
       waste: waste.status === 'fulfilled' ? waste.value : null,
-    });
-    setStatus({ loading: false, refreshing: false, error: null, syncedAt: Date.now() });
+    };
+    const syncedAt = Date.now();
+    setData(next);
+    setFresh(true);
+    setStatus({ loading: false, refreshing: false, error: null, syncedAt });
+    saveCached(next, syncedAt);
   }, []);
 
   useEffect(() => {
-    if (!unlocked) return;
     if (!isInventoryApiConfigured()) {
       setStatus({ loading: false, refreshing: false, error: 'Live sheet sync is not set up yet.', syncedAt: null });
       return;
     }
-    load('initial');
-  }, [unlocked, load]);
+    load(cached ? 'refresh' : 'initial');
+  }, [load, cached]);
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[1];
 
@@ -164,7 +208,7 @@ export default function Dashboard() {
   // price list, the stock position and the whole ledger. Questions reach well
   // past the tab and range on screen, so the answer has to be able to.
   const book = useMemo(() => {
-    if (!data || !geminiReady) return null;
+    if (!data || !fresh || !geminiReady) return null;
     return buildBook({
       rows: data.rows,
       catalogue: PRODUCTS,
@@ -172,7 +216,7 @@ export default function Dashboard() {
       trolleyItems: data.trolleyItems,
       waste: data.waste,
     });
-  }, [data, geminiReady]);
+  }, [data, fresh, geminiReady]);
 
   // The dock floats over the page rather than sitting in a panel, so the
   // slice it opens with is built here, for whichever tab is showing.
@@ -199,9 +243,10 @@ export default function Dashboard() {
     return { onScreen, book };
   }, [view, data, book, tab, range]);
 
-  if (!unlocked) return null;
-
   const activeTab = TABS.find((t) => t.key === tab);
+  // One signal for everything that floats, so the bar and the dock leave and
+  // return together rather than crossing each other on the way.
+  const scrolledAway = useHideOnScroll();
 
   return (
     <div className="ground min-h-dvh text-ink flex flex-col items-center px-5 py-7 font-sans">
@@ -235,33 +280,6 @@ export default function Dashboard() {
           </div>
         )}
       </header>
-
-      {data && (
-        <div className="glass w-full max-w-3xl mb-4 flex gap-2 rounded-[22px] p-1.5">
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                aria-pressed={active}
-                className="flex-1 rounded-[18px] py-2.5 text-sm font-medium tracking-wide transition-colors"
-                style={
-                  active
-                    ? {
-                        backgroundColor: `color-mix(in srgb, ${t.chrome} 14%, transparent)`,
-                        color: t.chrome,
-                        border: `1px solid color-mix(in srgb, ${t.chrome} 32%, transparent)`,
-                      }
-                    : { color: 'var(--color-ink-3)', border: '1px solid transparent' }
-                }
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* One filter row, above everything it scopes — every tile, chart and
           table below re-renders against the same slice. */}
@@ -307,7 +325,7 @@ export default function Dashboard() {
       )}
 
       {view && (
-        <main className={`w-full max-w-3xl ${digest ? 'pb-28' : 'pb-14'}`}>
+        <main className={`w-full max-w-3xl ${digest ? 'pb-44' : 'pb-32'}`}>
           {tab === 'shop' ? (
             <ShopPanel
               stats={view.shop.stats}
@@ -328,8 +346,16 @@ export default function Dashboard() {
               dim={status.refreshing}
             />
           )}
+
+          {/* Below the panels rather than in the header: it is set once and
+              then forgotten, unlike the range and the tabs. */}
+          <div className="mt-4">
+            <MorningSummary accent={activeTab.chrome} />
+          </div>
         </main>
       )}
+
+      {data && <SectionNav tab={tab} onChange={setTab} hidden={scrolledAway} />}
 
       {digest && (
         <InsightsDock
@@ -337,9 +363,67 @@ export default function Dashboard() {
           cacheKey={`${tab}:${rangeKey}:${status.syncedAt ?? 0}`}
           digest={digest}
           accent={activeTab.chrome}
+          hidden={scrolledAway}
         />
       )}
     </div>
+  );
+}
+
+/* ------------------------------- bottom nav ------------------------------- */
+
+// Shop and Trolley used to sit in a row under the title, at the top of a page
+// that is mostly scrolling. Down here they stay in reach of a thumb however
+// far down the charts you are — the same reason the insights dock floats.
+//
+// The bar is tinted towards the shop's green, but each
+// tab keeps its own chrome when active: green for the shop, amber for the
+// trolley. That pairing is the app's section identity and it holds everywhere
+// else, so the container is what is green here, not the selection.
+function SectionNav({ tab, onChange, hidden }) {
+  return (
+    <nav
+      aria-label="Section"
+      // Hidden from the pointer as well as the eye — a bar that has slid off
+      // the screen must not still be catching taps meant for the chart under
+      // it. aria-hidden goes with it so a screen reader is not offered a
+      // control that is on its way out.
+      aria-hidden={hidden}
+      className={`glass-strong fixed z-40 bottom-4 left-1/2 -translate-x-1/2 w-[min(23rem,calc(100vw-2rem))] flex gap-1.5 rounded-[24px] p-1.5 shadow-2xl transition-[transform,opacity] duration-300 ease-out ${
+        hidden ? 'translate-y-[150%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
+      }`}
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-shop) 10%, rgba(15, 26, 20, 0.82))',
+        borderColor: 'color-mix(in srgb, var(--color-shop) 30%, transparent)',
+      }}
+    >
+      {TABS.map((t) => {
+        const active = tab === t.key;
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.key}
+            onClick={() => onChange(t.key)}
+            aria-pressed={active}
+            tabIndex={hidden ? -1 : 0}
+            className="flex-1 flex items-center justify-center gap-2 rounded-[19px] py-3 text-[15px] tracking-wide transition-colors"
+            style={
+              active
+                ? {
+                    backgroundColor: `color-mix(in srgb, ${t.chrome} 22%, transparent)`,
+                    color: t.chrome,
+                    border: `1px solid color-mix(in srgb, ${t.chrome} 45%, transparent)`,
+                    fontWeight: 600,
+                  }
+                : { color: 'var(--color-ink-2)', border: '1px solid transparent', fontWeight: 500 }
+            }
+          >
+            <Icon className="w-[17px] h-[17px]" aria-hidden="true" />
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 

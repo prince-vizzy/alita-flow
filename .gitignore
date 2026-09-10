@@ -50,3 +50,5 @@ shop-items-template.xlsx
 
 # Photos extracted from "shop items.docx" (~12 MB) — regenerate rather than commit
 shop-items-photos/
+
+.env*

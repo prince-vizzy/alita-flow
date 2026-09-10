@@ -60,7 +60,7 @@ for how to deploy or update it. Point the app at your deployment by setting
 
 ## Dashboard insights (Gemini)
 
-The Alita Flow mark sits in the bottom-right corner of the admin dashboard.
+The Alita Flow mark sits in the bottom-right corner of the dashboard.
 Gemini writes a short read of whatever range is selected and offers it as a
 speech bubble; tapping the mark opens that reading into a conversation where
 you can ask about the same slice. The bubble can be waved away without
@@ -105,6 +105,112 @@ hidden in normal local development. Use `npx vercel dev` to exercise it.
 Summaries are cached per section + range + refresh, so switching tabs or going
 back to a range you've already looked at costs nothing; the ↻ on the card
 forces a rewrite.
+
+## The dashboard and its PIN
+
+There is no sign-in: the shop and trolley open for anyone with the app. The
+dashboard is reached the way it always was — **long-press the "Alita Flow"
+title** on the home screen and type the four-digit admin PIN. Once it's
+accepted, a second long-press goes straight in until the app is closed. The
+dashboard's back arrow returns to the section chooser.
+
+What changed underneath is where the PIN lives. It used to be a constant in
+the bundle, compared in the browser — which hid the dashboard and protected
+nothing, since anything in the bundle is readable by whoever opens the site,
+and for a while `/api/gemini` would answer plain `curl` from anyone who found
+the URL and spend the Gemini quota doing it. Now:
+
+- The PIN is held by the server ([`api/_pin.js`](./api/_pin.js)). The browser
+  sends what was typed to `/api/unlock` and keeps it for the session.
+- `/api/gemini` and the dashboard's **Send one now** (`POST /api/notify`) check
+  it again on every call, from an `X-Admin-Pin` header.
+- Five wrong PINs from one address lock that address out for fifteen minutes,
+  so the ten thousand possible PINs can't simply be tried in a loop.
+
+To change the PIN, set `ADMIN_PIN` in Vercel → Settings → Environment
+Variables and redeploy. Unset, it is the PIN the app has always used.
+
+`npm run dev` serves no `/api`, so there the PIN box lets any four digits
+through; that branch is compiled out of production builds.
+
+The dashboard opens onto whatever it loaded last and refreshes underneath (the
+↻ in the header spins while it does). The sheet takes several seconds to
+answer — more on a phone's connection — and the page used to show "Loading…"
+for all of it on every visit. Insights wait for the fresh numbers rather than
+writing a read of the cached ones.
+
+## Morning summary notifications
+
+At 06:00 Nairobi time every device that has switched them on gets two push
+notifications — one for the shop, one for the trolley — reading yesterday.
+
+    Shop: KES 7,600 net
+    Brass Locks carried the day at KES 4,400; three items are down to their
+    last few.
+
+    Trolley: KES 340 down
+    Eggs sold through but 22 were cooked and never sold — the third quiet
+    Tuesday in a row.
+
+The title is computed from the ledger and is always exact. The line under it
+is written by the same Gemini model the dashboard uses
+([`api/_summary.js`](./api/_summary.js)), from yesterday's totals, the day
+before, the week's average, and either the shop's stock alerts or the
+trolley's leftovers. If Gemini is slow, rate-limited or switched off, the
+plain figures go out instead — the notification is never skipped over a
+model that would not answer.
+
+Days are Nairobi's, stated explicitly rather than inherited: Vercel runs in
+UTC, and a 9pm sale would otherwise be filed under the wrong day.
+
+### How it fits together
+
+| Piece | Does |
+| --- | --- |
+| [`src/sw.js`](./src/sw.js) | Receives the push and shows it. The worker is hand-written now (`injectManifest`) rather than generated, because a push has to be handled with no page open. |
+| [`src/lib/pushApi.js`](./src/lib/pushApi.js) | Asks permission, subscribes, and files the endpoint in the sheet. |
+| [`src/components/MorningSummary.jsx`](./src/components/MorningSummary.jsx) | The switch at the foot of the dashboard, and **Send one now**. |
+| `Push Subscriptions` tab | One row per device. Written by the browser, read only by the cron. |
+| [`api/notify.js`](./api/notify.js) | The cron endpoint and the sender. |
+| [`api/push.js`](./api/push.js) | Hands the browser the VAPID public key. |
+
+A subscription belongs to one browser on one phone, not to an account — there
+is nothing to sign in to. Turning it on again on a second device adds a second
+row rather than moving the first. Dead endpoints (a reinstalled app, cleared
+site data, a new phone) come back as 404/410 from the push service and are
+deleted from the sheet automatically.
+
+### Setup
+
+1. Generate a VAPID pair once and keep it — changing it unsubscribes every
+   device:
+
+       node -e "console.log(require('web-push').generateVAPIDKeys())"
+
+2. In Vercel → Settings → Environment Variables, set `VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (a `mailto:` for you), `PUSH_SECRET`
+   (any long random string) and `CRON_SECRET` (likewise).
+3. In the Apps Script editor: Project Settings → Script Properties → add
+   `PUSH_SECRET` with the *same* value, then redeploy the web app. That secret
+   gates the one request that returns the list of subscribed devices.
+4. Deploy. The cron in [`vercel.json`](./vercel.json) runs `/api/notify` at
+   `0 3 * * *` (03:00 UTC = 06:00 EAT).
+5. Open the dashboard on the phone, switch **Morning summary** on, and tap
+   **Send one now** to check it end to end.
+
+Without the VAPID keys the control does not render and nothing else changes.
+Without `CRON_SECRET` the scheduled send refuses rather than standing open to
+anyone who finds the URL.
+
+### Caveats
+
+- **iOS** only delivers web push to a PWA that has been **added to the home
+  screen**, on 16.4 or later. In a plain Safari tab the API is absent and the
+  control stays hidden. Android Chrome works from a browser tab.
+- On Vercel's Hobby plan a cron fires **once a day, within the hour** of its
+  schedule — near six, not at six exactly.
+- `npm run dev` does not serve `/api`, so the control stays hidden in normal
+  local development. Use `npx vercel dev`.
 
 ## Offline behavior
 

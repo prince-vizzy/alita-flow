@@ -19,7 +19,7 @@ const CATALOG_VERSION_KEY = 'alita-flow-catalog-version';
 // without a version stamp a new catalogue would only ever show up on a phone
 // that had cleared its storage. A mismatch throws the cache away and re-seeds
 // from PRODUCTS; live stock is pulled straight after by refresh().
-const CATALOG_VERSION = '2026-09-03-inventory-tracker';
+const CATALOG_VERSION = '2026-09-10-sheet-codes';
 
 // The offline queue is shared with the trolley section, so only ever touch
 // the entries belonging to the shop.
