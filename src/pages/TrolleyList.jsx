@@ -15,6 +15,7 @@ import { useTrolley } from '../context/TrolleyContext';
 import { useInventory } from '../context/InventoryContext';
 import { fetchTrolleyWaste } from '../lib/inventoryApi';
 import { TROLLEY_EXPENSE_ITEMS, TROLLEY_UNITS } from '../data/trolleyProducts';
+import { DEFAULT_UNIT } from '../data/units';
 import QuantityPicker from '../components/QuantityPicker';
 
 const ACCENT = 'var(--color-trolley)';
@@ -280,7 +281,7 @@ function Result({ message }) {
 function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmit, onClose }) {
   const [productId, setProductId] = useState(null);
   const [qty, setQty] = useState('');
-  const [unit, setUnit] = useState('Pieces');
+  const [unit, setUnit] = useState(DEFAULT_UNIT);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const { products } = useTrolley();

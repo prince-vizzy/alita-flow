@@ -56,6 +56,14 @@ cell is genuinely blank and writes only the plain-value columns (Partner,
 Doc No., Date, Item, Qty, UoM, Tsn. Type, Amount — the sheet also has a PIN
 column the app doesn't use and leaves blank).
 
+Several `Manual-Ledger` columns are strict dropdowns, and one value outside a
+list rejects the whole row — the sale simply isn't recorded, and the app shows
+the sheet's "violates the data validation rules" message. `Code.gs` writes
+only what the lists allow: the app's "Pieces"/"Packets" become `Pcs`/`Pkt`
+(`ledgerUnit()`), and restocks leave Partner blank, since it only accepts the
+sheet's named suppliers and customers. If a dropdown changes, check these
+first.
+
 Both `Tsn Ledgers`' column order and `Manual-Ledger`'s name and columns have
 already shifted multiple times as the sheet owner reorganizes it — if
 sales/restocks stop recording or the dashboard reads zero, re-verify both

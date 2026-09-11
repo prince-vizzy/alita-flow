@@ -8,13 +8,14 @@ import {
   TROLLEY_PRICE_PICKER_ITEMS,
   TROLLEY_UNITS,
 } from '../data/trolleyProducts';
+import { DEFAULT_UNIT } from '../data/units';
 import QuantityPicker from '../components/QuantityPicker';
 
 const ACCENT = 'var(--color-trolley)';
 
 export default function TrolleyDetail() {
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('Pieces');
+  const [unit, setUnit] = useState(DEFAULT_UNIT);
   const [price, setPrice] = useState('');
   const [selling, setSelling] = useState(false);
   const [message, setMessage] = useState(null);
@@ -46,7 +47,7 @@ export default function TrolleyDetail() {
       if (isPricedItem) {
         const qty = Number(quantity);
         const amount = qty * Number(price);
-        const { cookedStock, queued } = await sell(product, qty, 'Pieces', amount);
+        const { cookedStock, queued } = await sell(product, qty, DEFAULT_UNIT, amount);
         setMessage({
           type: 'success',
           text: queued

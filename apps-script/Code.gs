@@ -172,7 +172,10 @@ function addStock(body) {
   const price = inventorySheet.getRange(2 + rowIndex, 4).getValue(); // D
   const when = body.timestamp ? new Date(body.timestamp) : new Date();
   appendLedgerRow(ss, {
-    partner: 'Restock',
+    // Partner only accepts the sheet's own list of named suppliers and
+    // customers. The app doesn't know who a restock came from, and a blank
+    // is allowed where a made-up name like "Restock" is rejected.
+    partner: '',
     docNo: 'NA',
     date: when,
     item: name,
@@ -354,6 +357,34 @@ function trolleyPricesFromInventory(ss) {
 // column layout (for dashboardData()) have now shifted multiple times —
 // verify with a fresh xlsx export before trusting any sheet-name or
 // column-index comment in this file blindly.
+// Manual-Ledger's UoM column is a strict dropdown of the sheet's own
+// abbreviations — Pcs, Pkt, Litre, Ml, Kg, M, Can, Tray — and rejects the
+// whole write for anything else, so a sale sent as "Pieces" was never
+// recorded. The app keeps its readable labels; they're translated here, so a
+// sale queued offline by an older copy of the app still lands. A unit the
+// sheet has no word for is left blank rather than failing the sale.
+const LEDGER_UNITS = {
+  pcs: 'Pcs',
+  piece: 'Pcs',
+  pieces: 'Pcs',
+  pkt: 'Pkt',
+  packet: 'Pkt',
+  packets: 'Pkt',
+  litre: 'Litre',
+  litres: 'Litre',
+  ml: 'Ml',
+  kg: 'Kg',
+  m: 'M',
+  can: 'Can',
+  cans: 'Can',
+  tray: 'Tray',
+  trays: 'Tray',
+};
+
+function ledgerUnit(unit) {
+  return LEDGER_UNITS[String(unit || '').trim().toLowerCase()] || '';
+}
+
 function appendLedgerRow(ss, entry) {
   const sheet = mustGetSheet(ss, MANUAL_LEDGER_SHEET);
   const targetRow = firstBlankRow(sheet, 6); // F — Item
@@ -372,7 +403,7 @@ function appendLedgerRow(ss, entry) {
         entry.item,
         entry.qty,
         entry.amount,
-        entry.unit,
+        ledgerUnit(entry.unit),
         entry.type,
         'Stock', // Item Type — every existing manual-entry row uses this value
       ],

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Boxes, ChevronDown, Tag } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { isInventoryApiConfigured } from '../lib/inventoryApi';
+import { DEFAULT_UNIT, UNITS } from '../data/units';
 import QuantityPicker from '../components/QuantityPicker';
 
 const ACCENT = 'var(--color-shop)';
@@ -10,7 +11,7 @@ const LOW_STOCK_AT = 3;
 
 export default function ProductDetail() {
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('Pieces');
+  const [unit, setUnit] = useState(DEFAULT_UNIT);
   const [selling, setSelling] = useState(false);
   const [message, setMessage] = useState(null);
   const { id } = useParams();
@@ -95,12 +96,11 @@ export default function ProductDetail() {
             <QuantityPicker value={quantity} onChange={setQuantity} accent={ACCENT} />
 
             <Select value={unit} onChange={setUnit} ariaLabel="Unit" className="w-36">
-              <option className="bg-ground-2" value="Pieces">
-                Pieces
-              </option>
-              <option className="bg-ground-2" value="Packets">
-                Packets
-              </option>
+              {UNITS.map((u) => (
+                <option key={u} className="bg-ground-2" value={u}>
+                  {u}
+                </option>
+              ))}
             </Select>
           </div>
 

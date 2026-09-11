@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, RefreshCw, Search, WifiOff, X } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
+import { DEFAULT_UNIT, UNITS } from '../data/units';
 import InstallButton from '../components/InstallButton';
 
 const LOW_STOCK_AT = 3;
@@ -264,7 +265,7 @@ function AddStockModal({ products, onClose }) {
   const [itemSearch, setItemSearch] = useState('');
   const [showMatches, setShowMatches] = useState(false);
   const [qty, setQty] = useState('');
-  const [unit, setUnit] = useState('Pieces');
+  const [unit, setUnit] = useState(DEFAULT_UNIT);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const { addStock } = useInventory();
@@ -376,12 +377,11 @@ function AddStockModal({ products, onClose }) {
               aria-label="Unit"
               className="flex-1 rounded-full border border-white/12 bg-white/[0.06] text-center text-sm text-ink py-3 px-4 focus:outline-none focus:border-sage/50 cursor-pointer"
             >
-              <option className="bg-ground-2" value="Pieces">
-                Pieces
-              </option>
-              <option className="bg-ground-2" value="Packets">
-                Packets
-              </option>
+              {UNITS.map((u) => (
+                <option key={u} className="bg-ground-2" value={u}>
+                  {u}
+                </option>
+              ))}
             </select>
           </div>
 

@@ -12,8 +12,11 @@ for (const path in photoModules) {
   PHOTOS_BY_ID[id] = photoModules[path];
 }
 
-// Trolley goods are sold loose or by tray, unlike the shop's pieces/packets.
-export const TROLLEY_UNITS = ['Pieces', 'Trays', 'Kg', 'Packets'];
+// Trolley goods are sold loose, by tray, by weight or by the packet — only
+// the units that make sense for food, but spelled as the sheet's UoM list
+// spells them (see data/units.js), since Tsn Ledgers merges Trolley Log's
+// Unit column into the same UoM column as the shop's.
+export const TROLLEY_UNITS = ['Pcs', 'Tray', 'Kg', 'Pkt'];
 
 // Ingredients bought regularly for the trolley but never tracked as stock
 // items themselves — no Inventory row, no cook/sell flow, just a recurring
