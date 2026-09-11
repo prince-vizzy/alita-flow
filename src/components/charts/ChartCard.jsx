@@ -5,8 +5,10 @@ import { INK, SURFACE } from '../../lib/vizTheme';
 // The frame every chart on the dashboard sits in: title, one line of context,
 // the legend (always present for two or more series, so identity never rests
 // on color alone), and a chart/table toggle — the table is the WCAG-clean
-// twin, so no value on this page is reachable only by hovering.
-export default function ChartCard({ title, subtitle, legend, table, empty, dim, children }) {
+// twin, so no value on this page is reachable only by hovering. `actions` is
+// any extra control that belongs to the card as a whole (a week/month switch,
+// say) — it sits in the header, so it stays put whichever view is showing.
+export default function ChartCard({ title, subtitle, legend, table, empty, dim, actions, children }) {
   const [view, setView] = useState('chart');
   const headingId = useId();
   const isEmpty = Boolean(empty);
@@ -25,22 +27,25 @@ export default function ChartCard({ title, subtitle, legend, table, empty, dim, 
           {subtitle && <p className="text-[11px] mt-0.5" style={{ color: INK.muted }}>{subtitle}</p>}
         </div>
 
-        {table && !isEmpty && (
-          <div className="shrink-0 flex rounded-lg border border-white/10 p-0.5">
-            <ToggleButton
-              active={view === 'chart'}
-              onClick={() => setView('chart')}
-              icon={BarChart3}
-              label="Chart view"
-            />
-            <ToggleButton
-              active={view === 'table'}
-              onClick={() => setView('table')}
-              icon={Table2}
-              label="Table view"
-            />
-          </div>
-        )}
+        <div className="shrink-0 flex items-center gap-2">
+          {actions}
+          {table && !isEmpty && (
+            <div className="flex rounded-lg border border-white/10 p-0.5">
+              <ToggleButton
+                active={view === 'chart'}
+                onClick={() => setView('chart')}
+                icon={BarChart3}
+                label="Chart view"
+              />
+              <ToggleButton
+                active={view === 'table'}
+                onClick={() => setView('table')}
+                icon={Table2}
+                label="Table view"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {legend && legend.length > 1 && !isEmpty && view === 'chart' && (

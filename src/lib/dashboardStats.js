@@ -56,6 +56,43 @@ function enumerateMonths(startKey, endKey) {
   return out;
 }
 
+// Weeks run Monday to Sunday and are numbered the ISO way, because that is
+// what the sheet's own Week column does (ISOWEEKNUM, "Wk-36") — the dashboard's
+// weekly breakdown has to land every sale in the same week the sheet's
+// Weekly Report does, or the two could never be checked against each other.
+function weekStartKey(key) {
+  const date = parseDayKey(key);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return dayKey(date);
+}
+
+function isoWeekNumber(key) {
+  // The week belongs to whichever year its Thursday falls in.
+  const thursday = parseDayKey(key);
+  thursday.setDate(thursday.getDate() + 3 - ((thursday.getDay() + 6) % 7));
+  const jan4 = new Date(thursday.getFullYear(), 0, 4);
+  return 1 + Math.round(((thursday - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+}
+
+function enumerateWeeks(startKey, endKey) {
+  const out = [];
+  let cursor = weekStartKey(startKey);
+  while (cursor <= endKey && out.length < 520) {
+    out.push(cursor);
+    cursor = shiftDays(cursor, 7);
+  }
+  return out;
+}
+
+export function formatWeekLabel(key) {
+  return `Wk-${String(isoWeekNumber(key)).padStart(2, '0')}`;
+}
+
+// "Aug 31 – Sep 6": what a week number means, for the table beside it.
+export function formatWeekSpan(key) {
+  return `${formatDayLabel(key)} – ${formatDayLabel(shiftDays(key, 6))}`;
+}
+
 export function formatDayLabel(key) {
   return parseDayKey(key).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
@@ -182,21 +219,27 @@ export function computeStats(rows, window, { itemOrder = [] } = {}) {
     granularity === 'day' ? formatDayLabel(key) : formatMonthLabel(key)
   );
 
-  // A monthly roll-up is always available alongside the main axis, so a
-  // 90-day window can still show "how did each month do" without the caller
-  // re-aggregating. Only worth drawing once the window covers two months.
+  // Weekly and monthly roll-ups are always available alongside the main axis,
+  // bucketed exactly as the sheet's Weekly and Monthly Report tabs bucket
+  // them, so the breakdown card can show either without re-aggregating.
+  const rollUp = (keys, keyOf) => {
+    const index = new Map(keys.map((key, i) => [key, i]));
+    const totalSales = keys.map(() => 0);
+    const totalSpend = keys.map(() => 0);
+    sales.forEach((t) => {
+      const i = index.get(keyOf(t.day));
+      if (i !== undefined) totalSales[i] += Number(t.sales) || 0;
+    });
+    purchases.forEach((t) => {
+      const i = index.get(keyOf(t.day));
+      if (i !== undefined) totalSpend[i] += Number(t.expenses) || 0;
+    });
+    return [totalSales, totalSpend];
+  };
   const monthKeys = enumerateMonths(window.startKey, window.endKey);
-  const monthIndex = new Map(monthKeys.map((key, i) => [key, i]));
-  const monthlySales = monthKeys.map(() => 0);
-  const monthlySpend = monthKeys.map(() => 0);
-  sales.forEach((t) => {
-    const i = monthIndex.get(t.day.slice(0, 7));
-    if (i !== undefined) monthlySales[i] += Number(t.sales) || 0;
-  });
-  purchases.forEach((t) => {
-    const i = monthIndex.get(t.day.slice(0, 7));
-    if (i !== undefined) monthlySpend[i] += Number(t.expenses) || 0;
-  });
+  const [monthlySales, monthlySpend] = rollUp(monthKeys, (day) => day.slice(0, 7));
+  const weekKeys = enumerateWeeks(window.startKey, window.endKey);
+  const [weeklySales, weeklySpend] = rollUp(weekKeys, weekStartKey);
 
   // Per item: revenue, units, what was spent under that same name, and the
   // ledger's own net for it — no cost-allocation model, just its own rows.
@@ -249,6 +292,10 @@ export function computeStats(rows, window, { itemOrder = [] } = {}) {
     monthLabels: monthKeys.map(formatMonthLabel),
     monthlySales,
     monthlySpend,
+    weekKeys,
+    weekLabels: weekKeys.map(formatWeekLabel),
+    weeklySales,
+    weeklySpend,
     items,
     topByRevenue: [...items]
       .filter((i) => i.revenue > 0)

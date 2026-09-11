@@ -43,6 +43,7 @@ import {
   delta,
   formatDayLabel,
   formatRangeLabel,
+  formatWeekSpan,
   normalize,
   resolveWindow,
 } from '../lib/dashboardStats';
@@ -519,29 +520,7 @@ function ShopPanel({ stats, previous, range, stockSummary, items, dim }) {
         />
       </ChartCard>
 
-      {/* Only worth its space when the axis above is daily — on a monthly
-          axis this card would redraw the same series it just showed. */}
-      {stats.granularity === 'day' && stats.span >= 60 && stats.monthKeys.length > 1 && (
-        <ChartCard
-          title="Month by month"
-          subtitle="Rolled up per calendar month — the first and last months only count the days inside the range"
-          legend={[
-            { name: 'Sales', color: SALES_COLOR },
-            { name: 'Purchases', color: SPEND_COLOR },
-          ]}
-          table={buildMonthTable(stats)}
-        >
-          <BarChart
-            categories={stats.monthLabels}
-            series={[
-              { name: 'Sales', color: SALES_COLOR, values: stats.monthlySales },
-              { name: 'Purchases', color: SPEND_COLOR, values: stats.monthlySpend },
-            ]}
-            valueFormatter={formatMoney}
-            ariaLabel="Sales and purchases per month"
-          />
-        </ChartCard>
-      )}
+      <PeriodBreakdown stats={stats} range={range} spendLabel="Purchases" />
 
       <ChartCard
         title="Top items by revenue"
@@ -810,6 +789,8 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
         />
       </ChartCard>
 
+      <PeriodBreakdown stats={stats} range={range} spendLabel="Expenses" />
+
       <ChartCard
         title={`Units sold per ${periodWord}, by item`}
         subtitle={
@@ -1005,22 +986,116 @@ function buildTimeTable(stats, spendLabel = 'Purchases') {
   };
 }
 
-function buildMonthTable(stats) {
-  return {
-    columns: [
-      { key: 'month', label: 'Month' },
-      { key: 'sales', label: 'Sales', align: 'right' },
-      { key: 'spend', label: 'Purchases', align: 'right' },
-      { key: 'net', label: 'Net', align: 'right' },
-    ],
-    rows: stats.monthKeys.map((key, i) => ({
-      key,
-      month: stats.monthLabels[i],
-      sales: formatMoney(stats.monthlySales[i]),
-      spend: formatMoney(stats.monthlySpend[i]),
-      net: formatMoney(stats.monthlySales[i] - stats.monthlySpend[i]),
-    })),
-  };
+/* ------------------------- weekly / monthly breakdown ------------------------ */
+
+// Week by week or month by month, bucketed the way the sheet's Weekly and
+// Monthly Report tabs bucket (ISO weeks Monday to Sunday numbered "Wk-36",
+// calendar months), so on "All time" the two can be read side by side.
+//
+// Net is sales minus spend, like everywhere else on this page. The sheet's
+// "Closing" column is the same figure with the sign flipped: it computes
+// (Expenses + Spoilt) − Sales, so a good week shows there in brackets.
+function PeriodBreakdown({ stats, range, spendLabel }) {
+  const [unit, setUnit] = useState('week');
+  const weekly = unit === 'week';
+  const word = weekly ? 'week' : 'month';
+  const keys = weekly ? stats.weekKeys : stats.monthKeys;
+  const labels = weekly ? stats.weekLabels : stats.monthLabels;
+  const sales = weekly ? stats.weeklySales : stats.monthlySales;
+  const spend = weekly ? stats.weeklySpend : stats.monthlySpend;
+
+  // The chart keeps quiet periods as gaps — an axis never silently collapses
+  // time. The table lists only periods that traded, as the sheet's report
+  // does, with the same grand total underneath.
+  const traded = keys
+    .map((key, i) => ({ key, i }))
+    .filter(({ i }) => sales[i] || spend[i]);
+  const totalSales = sales.reduce((sum, v) => sum + v, 0);
+  const totalSpend = spend.reduce((sum, v) => sum + v, 0);
+
+  return (
+    <ChartCard
+      title={weekly ? 'Week by week' : 'Month by month'}
+      subtitle={
+        range.days
+          ? `The first and last ${word} only count days inside the range. On All time this matches the sheet's ${weekly ? 'Weekly' : 'Monthly'} Report.`
+          : `Same ${word}s as the sheet's ${weekly ? 'Weekly' : 'Monthly'} Report tab`
+      }
+      actions={<UnitSwitch value={unit} onChange={setUnit} />}
+      legend={[
+        { name: 'Sales', color: SALES_COLOR },
+        { name: spendLabel, color: SPEND_COLOR },
+      ]}
+      empty={stats.hasActivity ? null : 'Nothing recorded in this window.'}
+      table={{
+        columns: [
+          { key: 'period', label: weekly ? 'Week' : 'Month' },
+          ...(weekly ? [{ key: 'dates', label: 'Dates' }] : []),
+          { key: 'sales', label: 'Sales', align: 'right' },
+          { key: 'spend', label: spendLabel, align: 'right' },
+          { key: 'net', label: 'Net', align: 'right' },
+        ],
+        rows: [
+          ...traded.map(({ key, i }) => ({
+            key,
+            period: labels[i],
+            dates: weekly ? formatWeekSpan(key) : undefined,
+            sales: formatMoney(sales[i]),
+            spend: formatMoney(spend[i]),
+            net: formatMoney(sales[i] - spend[i]),
+          })),
+          {
+            key: 'total',
+            period: 'Total',
+            dates: '',
+            sales: formatMoney(totalSales),
+            spend: formatMoney(totalSpend),
+            net: formatMoney(totalSales - totalSpend),
+          },
+        ],
+      }}
+    >
+      <BarChart
+        categories={labels}
+        series={[
+          { name: 'Sales', color: SALES_COLOR, values: sales },
+          { name: spendLabel, color: SPEND_COLOR, values: spend },
+        ]}
+        valueFormatter={formatMoney}
+        ariaLabel={`Sales and ${spendLabel.toLowerCase()} per ${word}`}
+      />
+    </ChartCard>
+  );
+}
+
+const UNITS = [
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+];
+
+function UnitSwitch({ value, onChange }) {
+  return (
+    <div role="group" aria-label="Group by" className="flex rounded-lg border border-white/10 p-0.5">
+      {UNITS.map((option) => {
+        const active = option.key === value;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onChange(option.key)}
+            aria-pressed={active}
+            className="px-2 py-1 rounded-md text-[11px] font-medium transition-colors"
+            style={{
+              backgroundColor: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+              color: active ? INK.primary : INK.muted,
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function buildTopItemsTable(stats) {
