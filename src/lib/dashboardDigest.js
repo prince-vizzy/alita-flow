@@ -109,9 +109,11 @@ export function buildDigest({ section, range, stats, previous, stock, kitchen, w
 
   if (kitchen) {
     digest.kitchen = {
-      cookedUnitsLeft: round(kitchen.cookedUnits),
-      rawUnitsLeft: round(kitchen.rawUnits),
-      cookedValueLeft: round(kitchen.cookedValue),
+      openingUnits: round(kitchen.openingUnits),
+      addedTodayUnits: round(kitchen.addedUnits),
+      closingUnits: round(kitchen.closingUnits),
+      closingValue: round(kitchen.closingValue),
+      dayClosed: kitchen.closed,
       sellThroughPercent: pct(kitchen.sellThrough),
     };
   }
@@ -122,8 +124,7 @@ export function buildDigest({ section, range, stats, previous, stock, kitchen, w
     const scoped = waste.filter((day) => day.date >= stats.window.startKey);
     if (scoped.length) {
       digest.waste = {
-        // Leftovers are cooked but never sold, so they read as what guessing
-        // the day wrong costs the trolley.
+        // Stock recorded as spoilt at the day's close.
         days: scoped.length,
         totalUnits: round(scoped.reduce((sum, day) => sum + (Number(day.total) || 0), 0)),
         worstDays: [...scoped]
@@ -255,8 +256,12 @@ export function buildBook({ rows = [], catalogue, shopItems, trolleyItems, waste
     trolley: (trolleyItems ?? []).map((item) => ({
       name: item.name,
       price: round(item.price),
-      rawStock: round(item.regularStock),
-      cookedStock: round(item.cookedStock),
+      // Sold by takings, with no stock count, when `counted` is false.
+      counted: Boolean(item.counted),
+      openingStock: round(item.openingStock),
+      addedToday: round(item.addedToday),
+      closingStock: round(item.closingStock),
+      closedToday: Boolean(item.closed),
     })),
     // One row per item per business across the entire ledger.
     lifetimeByItem: lifetimeByItem(rows),

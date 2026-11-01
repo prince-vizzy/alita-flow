@@ -11,8 +11,8 @@ selling, and restocking all queue and sync automatically once back online).
 The app opens on a chooser with two independent businesses behind it:
 
 - **Shop** (`/shop`) — plumbing and hardware. One stock number per item.
-- **Trolley** (`/trolley`) — food cooked and sold daily. Two stock numbers per
-  item: **regular** (raw supply on hand) and **cooked** (ready to sell today).
+- **Trolley** (`/trolley`) — food sold daily, recorded once a day. Each item
+  has an **opening** and a **closing** stock figure.
 
 Each section has its own product data, context, and sheet tabs, and they share
 only the offline queue — which tags every action with its section so the two
@@ -20,15 +20,16 @@ never process each other's pending changes.
 
 ### How trolley stock moves
 
-    Add Stock →  regular +n
-    Cook      →  regular −n, cooked +n
-    Sold      →  cooked −n
+    Opening  =  yesterday's closing
+    Closing  =  opening + added today − sold − spoilt
 
-Customers only ever buy cooked stock, so selling is blocked until something has
-been cooked. Cooked stock is derived from the current day's log rows only, so
-it resets to zero on its own each midnight; anything cooked but unsold on an
-earlier day shows up in the **Waste — last 7 days** panel on the trolley
-screen.
+Sales aren't recorded as they happen. At the end of the day **Close day** asks
+for units sold and spoilt per item, and closing stock follows; it becomes
+tomorrow's opening with nothing to roll over. Closing again the same day
+corrects the figures rather than adding to them.
+
+Sweet-Potatoes and Arrow-Roots have no count. The ledger books them as the day's
+takings at Qty 1, so they close on a KES figure and show no stock.
 
 ## Stack
 

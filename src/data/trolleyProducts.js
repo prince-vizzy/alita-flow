@@ -12,44 +12,60 @@ for (const path in photoModules) {
   PHOTOS_BY_ID[id] = photoModules[path];
 }
 
-// Trolley goods are sold loose, by tray, by weight or by the packet — only
-// the units that make sense for food, but spelled as the sheet's UoM list
-// spells them (see data/units.js), since Tsn Ledgers merges Trolley Log's
-// Unit column into the same UoM column as the shop's.
-export const TROLLEY_UNITS = ['Pcs', 'Tray', 'Kg', 'Pkt'];
-
-// Ingredients bought regularly for the trolley but never tracked as stock
-// items themselves — no Inventory row, no cook/sell flow, just a recurring
-// cash cost logged straight to the dashboard as a Trolley expense.
-export const TROLLEY_EXPENSE_ITEMS = ['Onions', 'Tomatoes', 'Tomato Sauce', 'Barbecue Sauce', 'Salt'];
-
-// Sold as a portion for whatever the customer pays, not qty x a fixed
-// per-unit price — the Sell screen shows a price picker for these instead
-// of the usual quantity picker.
-export const TROLLEY_PRICE_PICKER_ITEMS = ['Arrow Roots', 'Sweet Potatoes'];
-export const TROLLEY_PRICE_OPTIONS = [20, 30, 40, 50, 60, 70, 80, 90, 100];
-
-// Item name, unit price, fallback emoji, opening regular stock — from the
-// "Inventory" tab (Business = Trolley). Prices are blank there for now; the
-// "Trolley Inventory" sheet is the source of truth and overwrites these on
-// the first sync.
-const RAW_TROLLEY = [
-  ["Eggs", 0, "🥚", 30],
-  ["Sweet Potatoes", 0, "🍠", 0],
-  ["Arrow Roots", 0, "🥔", 0],
-  ["Smokie", 0, "🌭", 10],
-  ["Smocha", 0, "🌯", 0],
+// Costs logged straight to the ledger as Purchases, never tracked as stock.
+// The ledger's Item column only accepts names on 'Trolley - Inventory', so
+// these have to match that tab exactly.
+export const TROLLEY_EXPENSE_ITEMS = [
+  'Onions',
+  'Tomatoes',
+  'Vegetables',
+  'Salt',
+  'Chillie Pepper',
+  'Choma Sauce',
+  'Chillie Sauce',
+  'Charcoal',
+  'Gas Refill',
+  'Water',
+  'Electricity',
+  'Serviettes',
+  'Sugar Bags',
+  'White Bags',
+  'Bar Soap',
+  'Knive Sharpening',
+  'City Council',
+  'Electric Kettle',
 ];
 
-export const TROLLEY_PRODUCTS = RAW_TROLLEY.map(([name, price, emoji, regularStock], index) => {
+// Item name, fallback emoji, counted — names as 'Trolley - Inventory' spells
+// them, in photo order. Counted items carry a stock figure. The others are
+// booked in the ledger as the day's takings at Qty 1, so they have no count to
+// open or close on. Prices and stock all come from the sheet on the first sync.
+const RAW_TROLLEY = [
+  ["Eggs", "🥚", true],
+  ["Sweet-Potatoes", "🍠", false],
+  ["Arrow-Roots", "🥔", false],
+  ["Smokie", "🌭", true],
+];
+
+export const TROLLEY_PRODUCTS = RAW_TROLLEY.map(([name, emoji, counted], index) => {
   const id = index + 1;
   return {
     id,
     name,
-    price,
+    price: 0,
     emoji,
     image: PHOTOS_BY_ID[id] ?? null,
-    regularStock,
-    cookedStock: 0,
+    counted,
+    openingStock: 0,
+    addedToday: 0,
+    soldToday: 0,
+    spoiltToday: 0,
+    takingsToday: 0,
+    closeSold: 0,
+    closeSpoilt: 0,
+    closeTakings: 0,
+    available: 0,
+    closingStock: 0,
+    closed: false,
   };
 });

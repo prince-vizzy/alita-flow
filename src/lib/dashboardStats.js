@@ -346,7 +346,7 @@ function buildQtyByItem(sales, buckets, bucketOf, itemOrder) {
 }
 
 // Today's trading, independent of the selected range — the trolley runs a
-// same-day cycle (cook in the morning, sell out by evening), so these stay
+// daily cycle (opening stock in the morning, closed at night), so these stay
 // pinned to today whatever window the rest of the page shows.
 export function computeToday(rows) {
   const key = todayKey();

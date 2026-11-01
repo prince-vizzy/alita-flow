@@ -16,7 +16,7 @@ export default function Home() {
   const pressTimer = useRef(null);
 
   const shopOut = shopProducts.filter((p) => p.stock === 0).length;
-  const cookedNow = trolleyProducts.reduce((sum, p) => sum + p.cookedStock, 0);
+  const trolleyClosed = trolleyProducts.length > 0 && trolleyProducts.every((p) => p.closed);
 
   // Already unlocked this session: straight through, no second PIN.
   const openDashboard = () => {
@@ -74,10 +74,10 @@ export default function Home() {
           accent="var(--color-trolley)"
           icon={ShoppingCart}
           title="Trolley"
-          subtitle="Cooked daily"
+          subtitle="Closed daily"
           stats={[
             `${trolleyProducts.length} items`,
-            cookedNow > 0 ? `${cookedNow} cooked today` : 'nothing cooked yet',
+            trolleyClosed ? 'closed today' : 'not closed yet',
           ]}
           onClick={() => navigate('/trolley')}
         />

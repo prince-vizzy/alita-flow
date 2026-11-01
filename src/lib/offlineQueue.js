@@ -16,8 +16,8 @@ function saveQueue(queue) {
 
 // action: {
 //   section: 'shop' | 'trolley',
-//   type: 'sell' | 'addStock' | 'cook',   // 'cook' is trolley-only
-//   name, qty, unit, timestamp
+//   type: 'sell' | 'addStock' | 'close' | 'expense',   // 'sell' is shop-only, the rest trolley-only bar addStock
+//   name, qty, unit, timestamp                         // a 'close' carries `lines` instead of a name and qty
 // }
 export function enqueueAction(action) {
   const queue = getQueue();

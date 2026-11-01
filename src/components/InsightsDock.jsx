@@ -26,7 +26,7 @@ import { INK, STATUS } from '../lib/vizTheme';
 
 const PLACEHOLDERS = {
   shop: 'Which items should I reorder first?',
-  trolley: 'Am I cooking too much on quiet days?',
+  trolley: 'Which days do eggs sell best?',
 };
 
 // The popover surface, repeated here for the bubble tail — a rotated square

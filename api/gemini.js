@@ -45,7 +45,7 @@ const SYSTEM_INSTRUCTION = [
 const BOOK_INSTRUCTION = [
   '"book" is everything the business holds — the full price list with item codes and current',
   'stock, the trolley items, every item ever traded with its lifetime revenue, units, spend and',
-  'the day it last sold, monthly totals per business, and the trolley waste log.',
+  'the day it last sold, monthly totals per business, and the trolley spoilt stock log.',
   'Use "onScreen" for anything about the current view, and "book" for everything else:',
   'prices, stock levels, item codes, history outside the range, and the other section.',
 ].join(' ');

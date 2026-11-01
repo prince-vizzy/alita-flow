@@ -6,7 +6,7 @@ import {
   Boxes,
   CalendarDays,
   Coins,
-  Flame,
+  Package,
   PackageX,
   Receipt,
   RefreshCw,
@@ -66,7 +66,7 @@ const LOW_STOCK_AT = 3;
 // Fixed item order for the trolley's grouped bars — an item keeps its color
 // slot whatever sold on a given day, so the reader's "eggs are blue" holds
 // across every range and every chart on the panel.
-const TROLLEY_ITEM_ORDER = ['Eggs', 'Sweet Potatoes', 'Arrow Roots', 'Smokie', 'Smocha'];
+const TROLLEY_ITEM_ORDER = ['Eggs', 'Sweet-Potatoes', 'Arrow-Roots', 'Smokie'];
 
 // Section identity, carried over from the home screen. Chrome only — tabs and
 // the page title — never a chart mark: neither hue sits in the validated
@@ -137,7 +137,7 @@ export default function Dashboard() {
   }, []);
 
   // The ledger is the only hard dependency; live stock, trolley stock and the
-  // waste report each enrich one section and are allowed to fail on their own
+  // spoilt report each enrich one section and are allowed to fail on their own
   // without taking the page down with them.
   const load = useCallback(async (mode = 'initial') => {
     setStatus((prev) => ({
@@ -237,7 +237,7 @@ export default function Dashboard() {
             range,
             stats: view.trolley.stats,
             previous: view.trolley.previous,
-            kitchen: buildKitchenView(data.trolleyItems, view.trolley.today.itemsSold),
+            kitchen: buildKitchenView(data.trolleyItems),
             waste: data.waste,
             today: view.trolley.today,
           });
@@ -661,7 +661,7 @@ function StockPill({ out }) {
 function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
   const compare = previous ? `vs previous ${range.days} days` : null;
   const periodWord = stats.granularity === 'day' ? 'day' : 'month';
-  const kitchen = useMemo(() => buildKitchenView(items, today.itemsSold), [items, today.itemsSold]);
+  const kitchen = useMemo(() => buildKitchenView(items), [items]);
   const wasteView = useMemo(() => buildWasteView(waste, stats.window.startKey), [waste, stats.window.startKey]);
   // Four items standing side by side stays readable for a couple of weeks;
   // past that the same data reads far better as one column per day.
@@ -669,8 +669,8 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
 
   return (
     <div className="flex flex-col gap-4" style={{ opacity: dim ? 0.55 : 1, transition: 'opacity 200ms' }}>
-      {/* The trolley trades on a same-day cycle — cook in the morning, sell
-          out by evening — so today leads, whatever range is selected. */}
+      {/* The trolley runs a daily cycle — opening stock in the morning, closed
+          at night — so today leads, whatever range is selected. */}
       <HeroStat
         label="Today's net"
         value={formatMoney(today.net)}
@@ -683,7 +683,7 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
         caption={
           today.saleCount
             ? `${formatExact(today.saleCount)} sales today · ${formatUnits(today.itemsSold)} units sold`
-            : 'Nothing sold yet today'
+            : 'Today is not closed yet'
         }
       />
 
@@ -734,33 +734,39 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatTile
-              label="Cooked and ready"
-              icon={Flame}
-              value={formatUnits(kitchen.cookedUnits)}
-              hint="Units on the trolley now"
+              label="Opening stock"
+              icon={Package}
+              value={formatUnits(kitchen.openingUnits)}
+              hint={kitchen.addedUnits ? `Plus ${formatUnits(kitchen.addedUnits)} added today` : "Yesterday's closing"}
             />
             <StatTile
-              label="Ready-to-sell value"
+              label="Closing stock value"
               icon={Wallet}
-              value={formatMoney(kitchen.cookedValue)}
+              value={formatMoney(kitchen.closingValue)}
               hint="At current prices"
             />
-            <StatTile label="Raw stock" icon={Boxes} value={formatUnits(kitchen.rawUnits)} hint="Still to be cooked" />
+            <StatTile
+              label={kitchen.closed ? 'Closing stock' : 'On hand'}
+              icon={Boxes}
+              value={formatUnits(kitchen.closingUnits)}
+              hint={kitchen.closed ? "Tomorrow's opening" : "Before today's close"}
+            />
             <StatTile
               label="Sold through today"
               value={kitchen.sellThrough == null ? '—' : formatPercent(kitchen.sellThrough)}
-              hint="Of everything cooked today"
+              hint="Of opening stock and today's additions"
             />
           </div>
 
-          <ChartCard title="On the trolley now" subtitle="Cooked stock sells first; raw stock is tomorrow's supply">
+          <ChartCard title="Today's stock" subtitle="Items with a stock count; potatoes close on takings alone">
             <DataTable
               columns={[
                 { key: 'name', label: 'Item' },
-                { key: 'cooked', label: 'Cooked', align: 'right' },
-                { key: 'raw', label: 'Raw', align: 'right' },
-                { key: 'price', label: 'Price', align: 'right' },
-                { key: 'value', label: 'Ready value', align: 'right' },
+                { key: 'opening', label: 'Opening', align: 'right' },
+                { key: 'added', label: 'Added', align: 'right' },
+                { key: 'sold', label: 'Sold', align: 'right' },
+                { key: 'spoilt', label: 'Spoilt', align: 'right' },
+                { key: 'closing', label: 'Closing', align: 'right' },
               ]}
               rows={kitchen.rows}
             />
@@ -812,27 +818,27 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
       </ChartCard>
 
       <ChartCard
-        title="Leftovers"
+        title="Spoilt stock"
         subtitle={
           wasteView
-            ? `${formatUnits(wasteView.total)} units cooked but never sold${
+            ? `${formatUnits(wasteView.total)} units recorded as spoilt${
                 range.days && range.days <= WASTE_DAYS ? ' in this range' : `, over the last ${WASTE_DAYS} days`
               }`
             : undefined
         }
         empty={
           !waste
-            ? 'Leftover report unavailable right now.'
+            ? 'Spoilt report unavailable right now.'
             : wasteView.categories.length
               ? null
-              : 'Nothing went to waste in this window.'
+              : 'Nothing recorded as spoilt in this window.'
         }
         table={
           wasteView && wasteView.categories.length
             ? {
                 columns: [
                   { key: 'date', label: 'Day' },
-                  { key: 'items', label: 'Left over' },
+                  { key: 'items', label: 'Spoilt' },
                   { key: 'total', label: 'Units', align: 'right' },
                 ],
                 rows: wasteView.rows,
@@ -843,9 +849,9 @@ function TrolleyPanel({ stats, previous, today, range, items, waste, dim }) {
         {wasteView && (
           <BarChart
             categories={wasteView.categories}
-            series={[{ name: 'Leftover units', color: SPEND_COLOR, values: wasteView.values }]}
+            series={[{ name: 'Spoilt units', color: SPEND_COLOR, values: wasteView.values }]}
             valueFormatter={formatUnits}
-            ariaLabel="Leftover units per day"
+            ariaLabel="Spoilt units per day"
           />
         )}
       </ChartCard>
@@ -917,35 +923,37 @@ function buildStockView(items, summary) {
   };
 }
 
-function buildKitchenView(items, soldToday) {
-  if (!items || !items.length) return null;
+// Only the items with a stock count: potatoes are booked as takings at Qty 1,
+// and adding those in would make the unit figures mean nothing.
+function buildKitchenView(allItems) {
+  const items = (allItems ?? []).filter((item) => item.counted);
+  if (!items.length) return null;
 
-  const cookedUnits = items.reduce((sum, item) => sum + (Number(item.cookedStock) || 0), 0);
-  const rawUnits = items.reduce((sum, item) => sum + (Number(item.regularStock) || 0), 0);
+  const sum = (read) => items.reduce((total, item) => total + (Number(read(item)) || 0), 0);
+  const openingUnits = sum((item) => item.openingStock);
+  const addedUnits = sum((item) => item.addedToday);
+  const soldUnits = sum((item) => item.soldToday);
 
   return {
-    cookedUnits,
-    rawUnits,
-    cookedValue: items.reduce(
-      (sum, item) => sum + (Number(item.cookedStock) || 0) * (Number(item.price) || 0),
-      0
-    ),
-    // Cooked stock is what's *left* of today's cooking, so everything cooked
-    // today is what sold plus what's still sitting there — no separate
-    // "cooked today" figure needed.
-    sellThrough: soldToday + cookedUnits > 0 ? soldToday / (soldToday + cookedUnits) : null,
+    openingUnits,
+    addedUnits,
+    closingUnits: sum((item) => item.closingStock),
+    closingValue: sum((item) => (Number(item.closingStock) || 0) * (Number(item.price) || 0)),
+    closed: items.every((item) => item.closed),
+    sellThrough: openingUnits + addedUnits > 0 ? soldUnits / (openingUnits + addedUnits) : null,
     rows: items.map((item) => ({
       key: item.id ?? item.name,
       name: item.name,
-      cooked: formatUnits(Number(item.cookedStock) || 0),
-      raw: formatUnits(Number(item.regularStock) || 0),
-      price: Number(item.price) > 0 ? formatMoney(item.price) : '—',
-      value: formatMoney((Number(item.cookedStock) || 0) * (Number(item.price) || 0)),
+      opening: formatUnits(Number(item.openingStock) || 0),
+      added: formatUnits(Number(item.addedToday) || 0),
+      sold: formatUnits(Number(item.soldToday) || 0),
+      spoilt: formatUnits(Number(item.spoiltToday) || 0),
+      closing: formatUnits(Number(item.closingStock) || 0),
     })),
   };
 }
 
-// The leftovers report only ever covers the last WASTE_DAYS days, so a longer
+// The spoilt report only ever covers the last WASTE_DAYS days, so a longer
 // range shows everything it has; a shorter one is trimmed to the same window
 // as the rest of the panel.
 function buildWasteView(waste, startKey) {

@@ -131,9 +131,9 @@ async function fetchWaste() {
     const data = await readSheet({ section: 'trolley', report: 'waste', days: 3 });
     return data.waste ?? [];
   } catch (err) {
-    // The waste log enriches one of the two notes; it is not worth losing
+    // The spoilt log enriches one of the two notes; it is not worth losing
     // both notifications over.
-    console.error('Waste log unavailable for the morning summary', err);
+    console.error('Spoilt log unavailable for the morning summary', err);
     return [];
   }
 }

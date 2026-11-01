@@ -51,27 +51,22 @@ export async function addStock(name, qty, unit, timestamp) {
 
 export async function fetchTrolleyStock() {
   const data = await getJson({ section: 'trolley' });
-  return data.items; // [{ id, name, price, regularStock, cookedStock }]
+  return data.items; // [{ id, name, price, counted, openingStock, addedToday, closingStock, … }]
 }
 
-// Restocking raw/uncooked supply — increases regular stock.
-export async function addTrolleyStock(name, qty, unit, timestamp) {
-  return postAction({ section: 'trolley', action: 'addStock', name, qty, unit, timestamp });
+// Stock coming in. `cost`, optional, is what the whole delivery cost in KES.
+export async function addTrolleyStock(name, qty, cost, timestamp) {
+  return postAction({ section: 'trolley', action: 'addStock', name, qty, cost, timestamp });
 }
 
-// Moves qty out of regular stock and into today's cooked stock.
-export async function cookTrolleyItem(name, qty, unit, timestamp) {
-  return postAction({ section: 'trolley', action: 'cook', name, qty, unit, timestamp });
+// The end-of-day record: { name, sold, spoilt } for counted items and
+// { name, takings } for items that only have a KES figure. Sending the same day
+// again corrects it. Closing stock follows from these on the server.
+export async function closeTrolleyDay(lines, timestamp) {
+  return postAction({ section: 'trolley', action: 'close', lines, timestamp });
 }
 
-// Sells from cooked stock only. `amount`, when given, is an explicit KES
-// total for portion-priced items (Arrow Roots, Sweet Potatoes) — overrides
-// the default qty x per-unit-price calculation.
-export async function sellTrolleyItem(name, qty, unit, timestamp, amount) {
-  return postAction({ section: 'trolley', action: 'sell', name, qty, unit, timestamp, amount });
-}
-
-// Per-day leftovers (cooked but never sold), most recent day first.
+// Per-day spoilt stock, most recent day first.
 export async function fetchTrolleyWaste(days = 7) {
   const data = await getJson({ section: 'trolley', report: 'waste', days });
   return data.waste; // [{ date, items: [{ name, qty }], total }]

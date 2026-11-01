@@ -180,11 +180,10 @@ export function digestFor(section, ledger, waste, day) {
     digest.stock = { outOfStock: ledger.stock.outOfStock, lowStock: ledger.stock.lowStock };
   }
   if (section.key === 'trolley') {
-    // Cooked but never sold — the one number that tells the trolley whether it
-    // guessed the day right.
-    const leftovers = (waste ?? []).find((entry) => entry.date === day);
-    digest.leftoverUnits = leftovers ? leftovers.total : 0;
-    digest.leftoverItems = leftovers?.items ?? [];
+    // Recorded as spoilt at that day's close.
+    const spoilt = (waste ?? []).find((entry) => entry.date === day);
+    digest.spoiltUnits = spoilt ? spoilt.total : 0;
+    digest.spoiltItems = spoilt?.items ?? [];
   }
 
   return digest;

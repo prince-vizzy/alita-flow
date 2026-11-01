@@ -9,47 +9,44 @@ It serves both sections of the app:
 | Section | Reads | Writes |
 | --- | --- | --- |
 | Shop | `Inventory` (rows where Business = Hardware) | `Manual-Ledger` — one row per sale (Tsn. Type = Sales) or restock (Tsn. Type = Purchases), which `Tsn Ledgers` then absorbs via its own formula |
-| Trolley | `Inventory` (price only, rows where Business = Trolley), `Trolley Inventory`, `Trolley Log` | `Trolley Log` |
-| Dashboard | `Tsn Ledgers` (Hardware rows only, raw), `Inventory` (stock counts, Trolley prices), `Trolley Log` | — (read-only) |
+| Trolley | `Trolley - Inventory`, `Trolley - Ledger Entry` | `Trolley - Ledger Entry` |
+| Dashboard | `Tsn Ledgers` (Hardware rows only, raw), `Inventory` (stock counts), `Trolley - Ledger Entry` | — (read-only) |
 | Notifications | `Push Subscriptions` | `Push Subscriptions` — one row per device that wants the morning summary |
 
 `?section=dashboard` ships the raw transaction rows rather than pre-aggregating
 them — the `/dashboard` page does the monthly/business grouping client-side,
 so there's one source of truth for that logic instead of duplicating it here.
-Trolley `sell`/`restock` events only ever land in `Trolley Log`, never in
-`Tsn Ledgers`, so `dashboardData()` also reads `Trolley Log` and synthesizes
-each row into a transaction (priced from `Inventory`'s Trolley rows) before
-returning it — `cook` events are skipped since they're an internal transfer,
-not money changing hands. This is what feeds the Trolley section on the
-`/dashboard` page.
-
-`dashboardData()` explicitly drops the `Source = "System Logs"` rows it reads
-from `Tsn Ledgers` itself. That sheet's own merge formula also pulls in
-Trolley Log rows, and since Trolley Log gained its Amount and "Ammended Type"
-columns those rows line up with a real Tsn. Type. Keeping them would count
-every trolley sale twice, and "Ammended Type" maps `restock` to `Sales`, so
-restocks would count as revenue too. `trolleyLogAsTransactions()` reads
-`Trolley Log` directly, so Trolley data only ever comes from there.
-
-Trolley Log writes go into the first row whose Item cell is blank rather than
-through `appendRow()`. The "Ammended Type" array formula fills its column down
-to the bottom of the grid, so `appendRow()` lands below that instead of
-under the last entry. It has already left rows 27–999 empty once, and
-`Tsn Ledgers` only merges Trolley Log down to row 1473.
+Trolley rows are read straight from `Trolley - Ledger Entry` and turned into
+transactions there too. Sales and Purchases count at Qty x Amount; Spoilt,
+Missing and Float Top Up rows carry no revenue or spend.
 
 The `/dashboard` page itself is not linked from the home screen. It's opened
 by long-pressing the "Alita Flow" title and entering the PIN, which the server checks (`api/_pin.js`).
 
-Shop items and their live stock all live on the single `Inventory` tab,
-distinguished by a Business column (`Hardware` vs `Trolley`). Trolley item
-**prices** are kept there too (that's where you edit them), but Trolley
-**quantities** use their own two tabs instead, since `Inventory`'s
-Added/Sold/Remaining formulas don't have a way to represent the Trolley's
-raw-vs-cooked two-stock model.
+**The shop and dashboard sections of `Code.gs` still expect `Inventory`,
+`Tsn Ledgers` and `Manual-Ledger`, which the sheet no longer has**, so those
+requests fail with `Cannot read properties of null (reading 'getLastRow')`
+until they are moved to `Shop - Ledger Entry` and `Shop - Inventory`. The
+trolley does not touch those tabs. `Trolley Log` and `Trolley Inventory` are
+no longer read or written.
 
-`Tsn Ledgers` is a computed view — a spilled array formula that merges
-`Manual-Ledger` (shop sales/restocks) with `Trolley Log` (trolley
-sell/cook/restock), so nothing gets written there directly. `Manual-Ledger`
+### How the trolley writes to the ledger
+
+Columns D (Date), F (UoM) and I (Item Type) of `Trolley - Ledger Entry` are
+array formulas that spill down the whole column, so only B, C, E, G, H, J and
+K are written. D carries B down to the next filled B, so every row the app
+writes fills B, and a corrected row is zeroed rather than cleared. The next
+free row is the first with a blank Tsn. Type (C), because a Float Top Up row
+has no Item. Item (E) only accepts names on `Trolley - Inventory`, and a name
+that isn't there is rejected, so `src/data/trolleyProducts.js` has to match it.
+
+A close's rows say `Day close` in Narration, which is how correcting a day
+finds its own rows and leaves hand-entered ones alone. Sales rows from a close
+go to the `Trolley - Mpesa` account; purchases leave Account blank.
+
+`Tsn Ledgers` was a computed view — a spilled array formula that merged
+`Manual-Ledger` (shop sales/restocks) with `Trolley Log`, so nothing got written
+there directly. `Manual-Ledger`
 itself still has the TSN-ID-style array-formula-driven filter range that
 made `getLastRow()` unreliable, so `Code.gs` finds the first row whose Item
 cell is genuinely blank and writes only the plain-value columns (Partner,
@@ -78,35 +75,15 @@ In the spreadsheet: **Extensions → Apps Script**.
 Delete whatever is in `Code.gs` and paste in the contents of
 [`Code.gs`](./Code.gs) from this folder.
 
-## 3. Create the trolley tabs (one time)
+## 3. How trolley stock works
 
-The trolley section needs two tabs the spreadsheet doesn't have. In the
-Apps Script editor, pick `setupTrolleySheets` from the function dropdown and
-press **Run**. It creates:
+    opening  = Purchases before today − Sales, Spoilt and Missing before today
+    closing  = opening + added today − sold today − spoilt today
 
-- **Trolley Inventory** — `No. | Item Name | Unit Price | Opening Regular`,
-  seeded with the current trolley items (Eggs, Sweet Potatoes, Arrow Roots,
-  Smokie) and their current on-hand quantities.
-- **Trolley Log** — `Timestamp | Item | Type | Qty | Unit | Amount`, where
-  Type is `restock`, `cook`, `sell` or `expense`. The sheet has since added a
-  formula column G, "Ammended Type", which the app never writes to.
-
-Re-running it is safe; it skips tabs that already exist. Prices weren't set
-for any trolley item yet, so fill in the real **Unit Price** for each one
-afterwards. To add a new trolley item later, just add a row to Trolley
-Inventory (and a matching entry in `src/data/trolleyProducts.js` so it has
-an emoji before the first sync).
-
-### How the two trolley stocks work
-
-    regular  raw supply on hand   = Opening Regular + restocks − everything cooked
-    cooked   ready to sell today  = cooked today − sold today
-
-Cooked stock is derived from *today's* log rows only, so it drops back to zero
-by itself at midnight — there's no scheduled trigger to set up and nothing to
-reset by hand. Anything cooked on an earlier day that was never sold is that
-day's waste, which the app reads back through
-`?section=trolley&report=waste&days=7`.
+There is no scheduled trigger and nothing to reset by hand: tomorrow's opening is
+the same sum run one day further. Items in the `Potatoes` category have no count,
+because the ledger books them as the day's takings at Qty 1. To add a trolley
+item, add it to `Trolley - Inventory` and to `src/data/trolleyProducts.js`.
 
 ## 3b. Set PUSH_SECRET (only if you want morning notifications)
 

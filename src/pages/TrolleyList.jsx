@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronDown,
-  Flame,
+  ClipboardCheck,
   Plus,
   Receipt,
   RefreshCw,
@@ -14,20 +14,21 @@ import {
 import { useTrolley } from '../context/TrolleyContext';
 import { useInventory } from '../context/InventoryContext';
 import { fetchTrolleyWaste } from '../lib/inventoryApi';
-import { TROLLEY_EXPENSE_ITEMS, TROLLEY_UNITS } from '../data/trolleyProducts';
-import { DEFAULT_UNIT } from '../data/units';
+import { TROLLEY_EXPENSE_ITEMS } from '../data/trolleyProducts';
 import QuantityPicker from '../components/QuantityPicker';
 
 const ACCENT = 'var(--color-trolley)';
 
 export default function TrolleyList() {
-  const [modal, setModal] = useState(null); // 'addStock' | 'cook' | 'expense' | null
+  const [modal, setModal] = useState(null); // 'addStock' | 'close' | 'expense' | null
   const navigate = useNavigate();
   const { products, pendingCount, syncError, clearSyncError } = useTrolley();
   const { isOnline } = useInventory();
 
-  const totalCooked = products.reduce((sum, p) => sum + p.cookedStock, 0);
-  const totalRaw = products.reduce((sum, p) => sum + p.regularStock, 0);
+  const counted = products.filter((p) => p.counted);
+  const totalOpening = counted.reduce((sum, p) => sum + p.openingStock + p.addedToday, 0);
+  const totalClosing = counted.reduce((sum, p) => sum + p.closingStock, 0);
+  const closed = products.length > 0 && products.every((p) => p.closed);
 
   return (
     <div className="ground min-h-dvh text-ink flex flex-col items-center px-5 py-7 font-sans">
@@ -47,18 +48,18 @@ export default function TrolleyList() {
       {/* The day's state, then the three things you do to it. */}
       <section className="glass w-full max-w-md rounded-[26px] p-4 mb-4">
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-light text-trolley">{totalCooked}</span>
-          <span className="text-[13px] text-ink-2">cooked today</span>
-          <span className="ml-auto text-[11px] text-ink-3">{totalRaw} raw in stock</span>
+          <span className="text-2xl font-light text-trolley">{closed ? totalClosing : totalOpening}</span>
+          <span className="text-[13px] text-ink-2">{closed ? 'closing stock' : 'opening stock'}</span>
+          <span className="ml-auto text-[11px] text-ink-3">{closed ? 'Day closed' : 'Not closed yet'}</span>
         </div>
 
         <div className="mt-3.5 flex items-center gap-2">
           <button
-            onClick={() => setModal('cook')}
+            onClick={() => setModal('close')}
             className="pill-trolley flex items-center gap-1.5 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-transform"
           >
-            <Flame className="w-3.5 h-3.5" />
-            Cook
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            Close day
           </button>
           <button
             onClick={() => setModal('addStock')}
@@ -128,9 +129,9 @@ export default function TrolleyList() {
                   </span>
                 </span>
               )}
-              {product.cookedStock === 0 && (
+              {product.counted && product.closingStock <= 0 && (
                 <span className="absolute top-2 right-2 rounded-full bg-[#8a2f2f] text-white text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5">
-                  None cooked
+                  None left
                 </span>
               )}
             </div>
@@ -143,12 +144,16 @@ export default function TrolleyList() {
                 </span>
                 <span
                   className={`text-[10px] rounded-full px-2 py-0.5 border ${
-                    product.cookedStock > 0
+                    product.closed
                       ? 'text-trolley border-trolley/25 bg-trolley/10'
                       : 'text-ink-3 border-white/10 bg-white/[0.04]'
                   }`}
                 >
-                  {product.cookedStock > 0 ? `${product.cookedStock} cooked` : `${product.regularStock} raw`}
+                  {product.counted
+                    ? `${product.closingStock} ${product.closed ? 'closing' : 'on hand'}`
+                    : product.closed
+                      ? `KES ${product.takingsToday}`
+                      : 'Not closed'}
                 </span>
               </div>
             </div>
@@ -156,18 +161,18 @@ export default function TrolleyList() {
         ))}
       </main>
 
-      <WastePanel />
+      <SpoiltPanel />
 
       {modal === 'addStock' && <AddStockModal onClose={() => setModal(null)} />}
-      {modal === 'cook' && <CookModal onClose={() => setModal(null)} />}
+      {modal === 'close' && <CloseDayModal onClose={() => setModal(null)} />}
       {modal === 'expense' && <ExpenseModal onClose={() => setModal(null)} />}
     </div>
   );
 }
 
-/* ----------------------------- Waste report ------------------------------ */
+/* ----------------------------- Spoilt report ----------------------------- */
 
-function WastePanel() {
+function SpoiltPanel() {
   const [open, setOpen] = useState(false);
   const [waste, setWaste] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -197,7 +202,7 @@ function WastePanel() {
         className="glass w-full flex items-center gap-2 rounded-[22px] px-4 py-3.5 text-xs text-ink-2 hover:text-ink transition-colors"
       >
         <Trash2 className="w-3.5 h-3.5" />
-        <span>Leftovers — last 7 days</span>
+        <span>Spoilt — last 7 days</span>
         <ChevronDown
           className={`w-3.5 h-3.5 ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -208,15 +213,13 @@ function WastePanel() {
           {loading && <p className="text-xs text-ink-3 px-4 py-3">Loading…</p>}
           {error && <p className="text-xs text-[#e88b8b] px-4 py-3">{error}</p>}
           {waste?.length === 0 && (
-            <p className="text-xs text-ink-3 px-4 py-3">
-              Nothing wasted — everything cooked has been sold.
-            </p>
+            <p className="text-xs text-ink-3 px-4 py-3">Nothing recorded as spoilt.</p>
           )}
           {waste?.map((day) => (
             <div key={day.date} className="px-4 py-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-ink-2">{day.date}</span>
-                <span className="text-xs font-medium text-trolley">{day.total} unsold</span>
+                <span className="text-xs font-medium text-trolley">{day.total} spoilt</span>
               </div>
               <p className="mt-1 text-[11px] text-ink-3">
                 {day.items.map((i) => `${i.name} ${i.qty}`).join(' · ')}
@@ -277,14 +280,14 @@ function Result({ message }) {
   );
 }
 
-// Pick an item, pick a quantity + unit, submit.
-function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmit, onClose }) {
+// Pick an item, say how many came in and what they cost.
+function AddStockModal({ onClose }) {
   const [productId, setProductId] = useState(null);
   const [qty, setQty] = useState('');
-  const [unit, setUnit] = useState(DEFAULT_UNIT);
+  const [cost, setCost] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
-  const { products } = useTrolley();
+  const { products, addStock } = useTrolley();
 
   const selected = products.find((p) => String(p.id) === productId);
 
@@ -296,9 +299,15 @@ function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmi
     setSaving(true);
     setMessage(null);
     try {
-      const text = await onSubmit(selected, qtyNum, unit);
-      setMessage({ type: 'success', text });
+      const { queued } = await addStock(selected, qtyNum, Number(cost) || 0);
+      setMessage({
+        type: 'success',
+        text: queued
+          ? `Added ${qtyNum} ${selected.name}. Offline, will sync when back online.`
+          : `Added ${qtyNum} ${selected.name}.`,
+      });
       setQty('');
+      setCost('');
       setProductId(null);
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
@@ -308,7 +317,7 @@ function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmi
   }
 
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet title="Add stock" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-2">
           {products.map((p) => {
@@ -333,43 +342,30 @@ function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmi
                   {p.emoji}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-xs text-ink truncate">
-                    {p.name}
-                    {p.price > 0 && <span className="text-ink-3"> · {p.price}</span>}
-                  </span>
-                  <span className="block text-[10px] text-ink-3">
-                    {availableOf(p)} {actionLabel}
-                  </span>
+                  <span className="block text-xs text-ink truncate">{p.name}</span>
+                  {p.counted && (
+                    <span className="block text-[10px] text-ink-3">{p.closingStock} on hand</span>
+                  )}
                 </span>
               </button>
             );
           })}
         </div>
 
-        <div className="flex flex-col items-center gap-3">
-          <QuantityPicker value={qty} onChange={setQty} accent={ACCENT} />
-          <div className="relative w-36">
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              aria-label="Unit"
-              className="w-full appearance-none rounded-full border border-white/12 bg-white/[0.06] text-ink text-sm py-3 pl-4 pr-9 text-center focus:outline-none focus:border-white/25 cursor-pointer"
-            >
-              {TROLLEY_UNITS.map((u) => (
-                <option className="bg-ground-2" key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="w-4 h-4 text-ink-3 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-              aria-hidden="true"
-            />
-          </div>
-        </div>
+        <QuantityPicker value={qty} onChange={setQty} accent={ACCENT} />
+
+        <input
+          type="number"
+          min="0"
+          value={cost}
+          onChange={(e) => setCost(e.target.value)}
+          placeholder="Total cost (KES), optional"
+          aria-label="Total cost in KES"
+          className="w-full rounded-full border border-white/12 bg-white/[0.06] text-ink placeholder:text-ink-3/70 text-sm py-3 px-4 text-center focus:outline-none focus:border-white/25"
+        />
 
         <SubmitButton disabled={saving || !qty || !selected}>
-          {saving ? 'Saving…' : submitLabel}
+          {saving ? 'Saving…' : 'Add stock'}
         </SubmitButton>
 
         <Result message={message} />
@@ -378,40 +374,141 @@ function ItemActionModal({ title, actionLabel, submitLabel, availableOf, onSubmi
   );
 }
 
-function AddStockModal({ onClose }) {
-  const { addStock } = useTrolley();
+// The day's one sales record. Every item has to be answered, zero included, so
+// a blank can't pass for "sold nothing"; spoilt is the only figure left optional.
+function CloseDayModal({ onClose }) {
+  const { products, closeDay } = useTrolley();
+  const [entries, setEntries] = useState(() =>
+    Object.fromEntries(
+      products.map((p) => [
+        p.name,
+        {
+          sold: p.closed ? String(p.closeSold) : '',
+          spoilt: p.closeSpoilt > 0 ? String(p.closeSpoilt) : '',
+          takings: p.closed ? String(p.closeTakings) : '',
+        },
+      ])
+    )
+  );
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const setEntry = (name, field, value) =>
+    setEntries((prev) => ({ ...prev, [name]: { ...prev[name], [field]: value } }));
+
+  const closingOf = (p) =>
+    p.available - (Number(entries[p.name].sold) || 0) - (Number(entries[p.name].spoilt) || 0);
+
+  const answered = products.every((p) => entries[p.name][p.counted ? 'sold' : 'takings'] !== '');
+  const overdrawn = products.some((p) => p.counted && closingOf(p) < 0);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!answered || overdrawn) return;
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      const { queued } = await closeDay(
+        products.map((p) =>
+          p.counted
+            ? {
+                name: p.name,
+                sold: Number(entries[p.name].sold),
+                spoilt: Number(entries[p.name].spoilt) || 0,
+              }
+            : { name: p.name, takings: Number(entries[p.name].takings) }
+        )
+      );
+      setMessage({
+        type: 'success',
+        text: queued ? 'Day closed. Offline, will sync when back online.' : 'Day closed.',
+      });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <ItemActionModal
-      title="Add stock"
-      actionLabel="raw"
-      submitLabel="Add stock"
-      availableOf={(p) => p.regularStock}
-      onClose={onClose}
-      onSubmit={async (product, qty, unit) => {
-        const { regularStock, queued } = await addStock(product, qty, unit);
-        return queued
-          ? `${product.name} will have ${regularStock} raw — offline, will sync when back online.`
-          : `${product.name} now has ${regularStock} raw in stock.`;
-      }}
-    />
+    <Sheet title="Close day" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {products.map((p) => {
+          const entry = entries[p.name];
+          const closing = closingOf(p);
+          return (
+            <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-ink">{p.name}</span>
+                {p.counted && (
+                  <span className="text-[11px] text-ink-3">
+                    Opening {p.openingStock}
+                    {p.addedToday > 0 && ` + ${p.addedToday} added`}
+                  </span>
+                )}
+              </div>
+
+              {p.counted ? (
+                <>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <CloseField
+                      label={`${p.name} units sold`}
+                      caption="Sold"
+                      value={entry.sold}
+                      onChange={(value) => setEntry(p.name, 'sold', value)}
+                    />
+                    <CloseField
+                      label={`${p.name} units spoilt`}
+                      caption="Spoilt"
+                      placeholder="0"
+                      value={entry.spoilt}
+                      onChange={(value) => setEntry(p.name, 'spoilt', value)}
+                    />
+                  </div>
+                  <p className={`mt-2 text-xs ${closing < 0 ? 'text-[#e88b8b]' : 'text-trolley'}`}>
+                    {closing < 0 ? `${-closing} more than was on hand` : `Closing stock ${closing}`}
+                  </p>
+                </>
+              ) : (
+                <div className="mt-2.5">
+                  <CloseField
+                    label={`${p.name} takings in KES`}
+                    caption="Takings (KES)"
+                    value={entry.takings}
+                    onChange={(value) => setEntry(p.name, 'takings', value)}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <SubmitButton disabled={saving || !answered || overdrawn}>
+          {saving ? 'Saving…' : 'Close day'}
+        </SubmitButton>
+
+        <Result message={message} />
+      </form>
+    </Sheet>
   );
 }
 
-function CookModal({ onClose }) {
-  const { cook } = useTrolley();
+function CloseField({ label, caption, value, onChange, placeholder }) {
   return (
-    <ItemActionModal
-      title="Cook"
-      actionLabel="raw available"
-      submitLabel="Cook"
-      availableOf={(p) => p.regularStock}
-      onClose={onClose}
-      onSubmit={async (product, qty, unit) => {
-        const { regularStock, cookedStock, queued } = await cook(product, qty, unit);
-        const summary = `${product.name}: ${cookedStock} cooked, ${regularStock} raw left.`;
-        return queued ? `${summary} Offline — will sync when back online.` : summary;
-      }}
-    />
+    <label className="block">
+      <span className="block text-[10px] text-ink-3 mb-1">{caption}</span>
+      <input
+        type="number"
+        min="0"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+        className="w-full rounded-full border border-white/12 bg-white/[0.06] text-ink placeholder:text-ink-3/70 text-sm py-2.5 px-3 text-center focus:outline-none focus:border-white/25"
+      />
+    </label>
   );
 }
 

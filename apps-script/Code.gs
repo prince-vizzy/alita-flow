@@ -9,8 +9,16 @@ const MANUAL_LEDGER_SHEET = 'Manual-Ledger';
 
 /* -------------------------------- Trolley -------------------------------- */
 
-const TROLLEY_INVENTORY_SHEET = 'Trolley Inventory';
-const TROLLEY_LOG_SHEET = 'Trolley Log';
+const TROLLEY_LEDGER_SHEET = 'Trolley - Ledger Entry';
+const TROLLEY_ITEMS_SHEET = 'Trolley - Inventory';
+
+// Marks the rows a day's close wrote, in the Narration column, so correcting a
+// close finds its own rows and leaves anything entered by hand alone.
+const CLOSE_NARRATION = 'Day close';
+
+// One of the sheet's Account dropdown values, and what nearly every existing
+// Sales row uses. The close has no way to split takings by account.
+const SALES_ACCOUNT = 'Trolley - Mpesa';
 
 /* ---------------------------- Push notifications -------------------------- */
 
@@ -18,17 +26,6 @@ const TROLLEY_LOG_SHEET = 'Trolley Log';
 // browser when the owner turns notifications on; read by the Vercel cron,
 // which is the only thing that ever needs the whole list.
 const PUSH_SHEET = 'Push Subscriptions';
-
-// Seeded by setupTrolleySheets(). [name, opening regular stock] — matches
-// what's currently on hand per the shared Inventory tab. Add more rows in
-// the sheet itself later; this list is only used the one time the tab gets
-// created.
-const TROLLEY_ITEMS = [
-  ['Eggs', 30],
-  ['Sweet Potatoes', 0],
-  ['Arrow Roots', 0],
-  ['Smokie', 10],
-];
 
 /* -------------------------------- Routing -------------------------------- */
 
@@ -76,10 +73,11 @@ function doPost(e) {
     }
 
     if (body.section === 'trolley') {
-      if (action === 'addStock') return trolleyAction(body, 'restock');
-      if (action === 'cook') return trolleyAction(body, 'cook');
+      if (action === 'close') return trolleyClose(body);
+      if (action === 'addStock') return trolleyRestock(body);
       if (action === 'expense') return trolleyExpense(body);
-      return trolleyAction(body, 'sell');
+      // A copy of the app from before the change, still sending single sales.
+      return jsonOutput({ error: 'Trolley sales are now recorded when the day is closed.' });
     }
 
     if (action === 'addStock') return addStock(body);
@@ -248,92 +246,33 @@ function dashboardData() {
   });
 
   return {
-    transactions: transactions.concat(trolleyLogAsTransactions(ss)),
+    transactions: transactions.concat(trolleyLedgerAsTransactions(ss)),
     stock: { outOfStock: outOfStock, lowStock: lowStock },
   };
 }
 
-// Trolley sell/restock/cook/expense events live in Trolley Log, never in Tsn
-// Ledgers, so the dashboard can't see them without this — synthesize each
-// row into the same shape as a Tsn Ledgers transaction so it flows through
-// the same client-side aggregation. 'cook' is skipped: it's an internal
-// transfer (raw -> cooked), not money changing hands.
-//
-// This also sidesteps a real limitation of the sheet's own Tsn-Ledgers merge:
-// its Business Type column is a formula that classifies purely by matching
-// the item name against Inventory's Trolley rows, so anything logged here
-// that has no Trolley row on Inventory (an ingredient like Barbecue Sauce, or
-// a trolley item added only to Trolley Inventory) would be tagged Hardware.
-// Reading Trolley Log directly and hardcoding business: 'Trolley' here avoids
-// that misclassification.
-function trolleyLogAsTransactions(ss) {
-  const logSheet = ss.getSheetByName(TROLLEY_LOG_SHEET);
-  if (!logSheet) return [];
-  const lastRow = logSheet.getLastRow();
-  if (lastRow < 2) return [];
-
-  const rows = logSheet.getRange(2, 1, lastRow - 1, 6).getValues(); // Timestamp,Item,Type,Qty,Unit,Amount
-  const priceByName = trolleyPricesFromInventory(ss);
-
+// The trolley ledger, in the same shape as a Tsn Ledgers transaction so it flows
+// through the same client-side aggregation. A row is worth Qty x Amount. Spoilt
+// and Missing rows move stock but no money, and a Float Top Up is cash moving
+// between people rather than spending, so none of those are transactions.
+function trolleyLedgerAsTransactions(ss) {
   const out = [];
-  rows.forEach((row) => {
-    const when = row[0];
-    const name = row[1];
-    const type = String(row[2] || '').toLowerCase();
-    const qty = Number(row[3]) || 0;
-    const explicitAmount = Number(row[5]) || 0; // Amount — set for portion-priced sells
-    if (!name || !qty || !(when instanceof Date)) return;
+  readTrolleyLedger(ss).forEach((row) => {
+    if (!row.item || !(row.date instanceof Date)) return;
+    if (row.type !== 'Sales' && row.type !== 'Purchases') return;
 
-    if (type === 'expense') {
-      // Qty holds the KES amount directly for expense rows, not a physical
-      // quantity — these are non-stock ingredient costs with no Inventory
-      // row and no per-unit price to multiply against.
-      out.push({
-        business: 'Trolley',
-        date: when.toISOString(),
-        item: name,
-        qty: 0,
-        type: 'Purchases',
-        sales: 0,
-        expenses: qty,
-      });
-      return;
-    }
-
-    if (type !== 'sell' && type !== 'restock') return;
-
-    // Some items (Arrow Roots, Sweet Potatoes) are sold as a portion for a
-    // customer-chosen price rather than qty x a fixed per-unit price — the
-    // client sends that price explicitly as Amount, which takes priority
-    // over the Inventory price lookup when present.
-    const price = priceByName[name] || 0;
-    const total = explicitAmount || qty * price;
+    const total = row.qty * row.amount;
     out.push({
       business: 'Trolley',
-      date: when.toISOString(),
-      item: name,
-      qty: qty,
-      type: type === 'sell' ? 'Sales' : 'Purchases',
-      sales: type === 'sell' ? total : 0,
-      expenses: type === 'restock' ? total : 0,
+      date: row.date.toISOString(),
+      item: row.item,
+      qty: row.qty,
+      type: row.type,
+      sales: row.type === 'Sales' ? total : 0,
+      expenses: row.type === 'Purchases' ? total : 0,
     });
   });
   return out;
-}
-
-// Trolley items' real prices live on the shared Inventory tab (Business =
-// Trolley), not the separate Trolley Inventory tab — that tab only tracks
-// raw/cooked quantities.
-function trolleyPricesFromInventory(ss) {
-  const sheet = ss.getSheetByName(INVENTORY_SHEET);
-  const lastRow = sheet.getLastRow();
-  const data = sheet.getRange(2, 3, lastRow - 1, 3).getValues(); // C:E — Item Name, Price, Business
-
-  const prices = {};
-  data.forEach((row) => {
-    if (row[0] && row[2] === 'Trolley') prices[row[0]] = row[1];
-  });
-  return prices;
 }
 
 // Tsn Ledgers is no longer directly writable — it's now a spilled array
@@ -412,152 +351,265 @@ function appendLedgerRow(ss, entry) {
 
 /* ---------------------------- Trolley handlers --------------------------- */
 
-// The trolley keeps two stocks per item:
+// The trolley runs on one stock figure per item and one record per day:
 //
-//   regular  raw supply on hand   = Opening Regular + restocks - everything cooked
-//   cooked   ready to sell today  = cooked today - sold today
+//   opening  = every Purchases row before today, less every Sales, Spoilt and
+//              Missing row before today
+//   closing  = opening + added today - sold today - spoilt today
 //
-// Because cooked stock is derived from *today's* log rows only, it resets to
-// zero on its own at midnight — no scheduled trigger needed. Whatever was
-// cooked on an earlier day but never sold is that day's waste, which makes the
-// waste report a read over the same log rather than a separate write.
-function trolleyState() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const invSheet = mustGetSheet(ss, TROLLEY_INVENTORY_SHEET);
-  const logSheet = mustGetSheet(ss, TROLLEY_LOG_SHEET);
-  const priceByName = trolleyPricesFromInventory(ss);
+// Nobody records a sale as it happens. At the end of the day the operator
+// enters units sold and spoilt per item, and closing stock follows; tomorrow's
+// opening is simply the same sum run one day further, so there is nothing to
+// roll over and no trigger to schedule.
+//
+// Items in the Potatoes category have no count at all. The ledger books them
+// as Qty 1 x the day's takings (Sweet-Potatoes stands at 11 bought, 37 "sold"),
+// so they close on a KES figure and report no stock.
+//
+// 'Trolley - Ledger Entry' columns: A flag, B Date Recorded, C Tsn. Type,
+// D Date, E Item, F UoM, G Qty, H Amount (per unit, so a row is worth G x H),
+// I Item Type, J Account, K Narration, L Doc No., M Partner, N PIN.
+// D, F and I are array formulas that spill down the whole column, so writing
+// any of them breaks the column — only B, C, E, G, H, J and K are ever written.
+// D carries B down to the next filled B, which is why every row written here
+// fills B, and why a row is zeroed rather than cleared: blanking one would hand
+// its date to whichever rows come after it.
+function readTrolleyLedger(ss) {
+  const sheet = mustGetSheet(ss, TROLLEY_LEDGER_SHEET);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
 
-  const invLastRow = invSheet.getLastRow();
-  const invRows = invLastRow > 1 ? invSheet.getRange(2, 1, invLastRow - 1, 4).getValues() : [];
+  const rows = [];
+  sheet
+    .getRange(2, 1, lastRow - 1, 11) // A:K
+    .getValues()
+    .forEach((row, i) => {
+      if (!row[2]) return; // C — Tsn. Type
+      rows.push({
+        at: i + 2,
+        type: row[2],
+        day: row[3] instanceof Date ? dayKey(row[3]) : '', // D
+        date: row[3],
+        item: row[4], // E
+        qty: Number(row[6]) || 0, // G
+        amount: Number(row[7]) || 0, // H
+        narration: row[10], // K
+      });
+    });
+  return rows;
+}
 
-  const items = {};
-  const order = [];
-  invRows.forEach((row) => {
-    const name = row[1];
-    if (!name) return;
-    items[name] = {
+// Only what the trolley actually sells: 'Trolley - Inventory' also lists sauces,
+// charcoal and the council fee, which are costs and never stock.
+function trolleyCatalog(ss) {
+  const sheet = mustGetSheet(ss, TROLLEY_ITEMS_SHEET);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  return sheet
+    .getRange(2, 2, lastRow - 1, 4) // B:E — No., Item Name, Price, Category
+    .getValues()
+    .filter((row) => row[1] && (row[3] === 'Stock' || row[3] === 'Potatoes'))
+    .map((row) => ({
       id: row[0],
-      name: name,
-      // Prices are actually kept on the shared Inventory tab (Business =
-      // Trolley), not this tab's own Unit Price column — fall back to that
-      // column only if the item isn't listed there yet.
-      price: priceByName[name] || row[2] || 0,
-      regularStock: Number(row[3]) || 0,
+      name: row[1],
+      price: Number(row[2]) || 0,
+      counted: row[3] === 'Stock',
+    }));
+}
+
+function trolleyPosition(catalog, rows, day) {
+  const byName = {};
+  catalog.forEach((item) => {
+    byName[item.name] = {
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      counted: item.counted,
+      openingStock: 0,
+      addedToday: 0,
+      soldToday: 0,
+      spoiltToday: 0,
+      takingsToday: 0,
+      closeSold: 0,
+      closeSpoilt: 0,
+      closeTakings: 0,
+      otherOut: 0, // Today's rows the owner entered by hand, not this close.
+      closed: false,
     };
-    order.push(name);
   });
 
-  const logLastRow = logSheet.getLastRow();
-  const logRows = logLastRow > 1 ? logSheet.getRange(2, 1, logLastRow - 1, 5).getValues() : [];
+  rows.forEach((row) => {
+    const item = byName[row.item];
+    if (!item || row.day > day) return;
 
-  const perDay = {}; // 'YYYY-MM-DD' -> { itemName: { cooked, sold } }
-  function bucket(day, name) {
-    if (!perDay[day]) perDay[day] = {};
-    if (!perDay[day][name]) perDay[day][name] = { cooked: 0, sold: 0 };
-    return perDay[day][name];
-  }
+    if (row.day !== day) {
+      if (row.type === 'Purchases') item.openingStock += row.qty;
+      else if (row.type === 'Sales' || row.type === 'Spoilt' || row.type === 'Missing') {
+        item.openingStock -= row.qty;
+      }
+      return;
+    }
 
-  logRows.forEach((row) => {
-    const when = row[0];
-    const name = row[1];
-    const type = String(row[2] || '').toLowerCase();
-    const qty = Number(row[3]) || 0;
-    if (!name || !qty || !items[name] || !(when instanceof Date)) return;
-
-    const day = dayKey(when);
-    if (type === 'restock') {
-      items[name].regularStock += qty;
-    } else if (type === 'cook') {
-      items[name].regularStock -= qty;
-      bucket(day, name).cooked += qty;
-    } else if (type === 'sell') {
-      bucket(day, name).sold += qty;
+    const fromClose = row.narration === CLOSE_NARRATION;
+    if (row.type === 'Purchases') {
+      item.addedToday += row.qty;
+    } else if (row.type === 'Sales') {
+      item.soldToday += row.qty;
+      item.takingsToday += row.qty * row.amount;
+      if (fromClose) {
+        item.closed = true;
+        item.closeSold = row.qty;
+        item.closeTakings = row.qty * row.amount;
+      } else {
+        item.otherOut += row.qty;
+      }
+    } else if (row.type === 'Spoilt') {
+      item.spoiltToday += row.qty;
+      if (fromClose) item.closeSpoilt = row.qty;
+      else item.otherOut += row.qty;
+    } else if (row.type === 'Missing') {
+      item.otherOut += row.qty;
     }
   });
 
-  return { items: items, order: order, perDay: perDay };
-}
-
-function cookedOn(state, name, day) {
-  const entry = state.perDay[day] && state.perDay[day][name];
-  return entry ? entry.cooked - entry.sold : 0;
-}
-
-function trolleyItems() {
-  const state = trolleyState();
-  const today = dayKey(new Date());
-
-  return state.order.map((name) => {
-    const item = state.items[name];
+  return catalog.map((entry) => {
+    const item = byName[entry.name];
+    // What this close has to account for, before its own figures come off.
+    const available = item.openingStock + item.addedToday - item.otherOut;
     return {
       id: item.id,
       name: item.name,
       price: item.price,
-      regularStock: item.regularStock,
-      cookedStock: cookedOn(state, name, today),
+      counted: item.counted,
+      openingStock: item.openingStock,
+      addedToday: item.addedToday,
+      soldToday: item.soldToday,
+      spoiltToday: item.spoiltToday,
+      takingsToday: item.takingsToday,
+      closeSold: item.closeSold,
+      closeSpoilt: item.closeSpoilt,
+      closeTakings: item.closeTakings,
+      available: available,
+      closingStock: available - item.closeSold - item.closeSpoilt,
+      closed: item.closed,
     };
   });
 }
 
-// One handler for all three trolley writes. `type` is what lands in the log's
-// Type column: 'restock', 'cook' or 'sell'. `body.amount`, when present, is
-// an explicit KES total for the sale (portion-priced items like Arrow Roots
-// and Sweet Potatoes, sold for a customer-chosen price rather than qty x a
-// fixed per-unit price) — written to the log's Amount column and preferred
-// over the Inventory price lookup in trolleyLogAsTransactions().
-function trolleyAction(body, type) {
+function trolleyItems() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return trolleyPosition(trolleyCatalog(ss), readTrolleyLedger(ss), dayKey(new Date()));
+}
+
+// The day's close, one line per item:
+//   { name, sold, spoilt }  counted items
+//   { name, takings }       Potatoes, in KES
+//
+// Checked in full before anything is written, so one bad figure can't leave a
+// day half closed. Sending the same day again updates its rows rather than
+// adding to them: that is how a mistake gets corrected, and it also makes a
+// close that reached the sheet just as the connection dropped safe to retry.
+function trolleyClose(body) {
+  const lines = body.lines;
+  if (!Array.isArray(lines) || !lines.length) {
+    return jsonOutput({ error: 'A close needs at least one item.' });
+  }
+
+  return withScriptLock(() => {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = mustGetSheet(ss, TROLLEY_LEDGER_SHEET);
+    const when = body.timestamp ? new Date(body.timestamp) : new Date();
+    const day = dayKey(when);
+    const rows = readTrolleyLedger(ss);
+    const position = trolleyPosition(trolleyCatalog(ss), rows, day);
+
+    const writes = [];
+    for (const line of lines) {
+      const item = position.find((p) => p.name === line.name);
+      if (!item) return jsonOutput({ error: 'Item not found: ' + line.name });
+
+      const sold = Number(line.sold) || 0;
+      const spoilt = Number(line.spoilt) || 0;
+      const takings = Number(line.takings) || 0;
+      if (sold < 0 || spoilt < 0 || takings < 0) {
+        return jsonOutput({ error: line.name + ': figures cannot be negative.' });
+      }
+
+      if (!item.counted) {
+        writes.push({ item: item.name, type: 'Sales', qty: 1, amount: takings, account: SALES_ACCOUNT });
+        continue;
+      }
+
+      if (sold + spoilt > item.available) {
+        return jsonOutput({
+          error:
+            item.name + ': only ' + item.available + ' on hand, but ' + (sold + spoilt) +
+            ' entered. If stock came in, add it first.',
+        });
+      }
+      // Written even at zero: the Sales row is what marks the item closed.
+      writes.push({ item: item.name, type: 'Sales', qty: sold, amount: item.price, account: SALES_ACCOUNT });
+      if (spoilt > 0 || item.closeSpoilt > 0) {
+        writes.push({ item: item.name, type: 'Spoilt', qty: spoilt, amount: item.price, account: '' });
+      }
+    }
+
+    writes.forEach((entry) => {
+      const existing = rows.find(
+        (row) =>
+          row.day === day &&
+          row.item === entry.item &&
+          row.type === entry.type &&
+          row.narration === CLOSE_NARRATION
+      );
+      if (existing) {
+        sheet.getRange(existing.at, 7, 1, 2).setValues([[entry.qty, entry.amount]]); // G:H
+      } else {
+        writeTrolleyRow(sheet, {
+          date: when,
+          type: entry.type,
+          item: entry.item,
+          qty: entry.qty,
+          amount: entry.amount,
+          account: entry.account,
+          narration: CLOSE_NARRATION,
+        });
+      }
+    });
+    SpreadsheetApp.flush();
+
+    return jsonOutput({ ok: true, items: trolleyItems() });
+  });
+}
+
+// Stock coming in. `cost` is what the whole delivery cost, optional, and is
+// stored per unit because that's how column H is read.
+function trolleyRestock(body) {
   const name = body.name;
   const qty = Number(body.qty);
-  const unit = body.unit || '';
-  const amount = body.amount ? Number(body.amount) : '';
+  const cost = Number(body.cost) || 0;
 
   if (!name || !qty || qty <= 0) {
     return jsonOutput({ error: 'name and a positive qty are required' });
   }
 
-  const state = trolleyState();
-  if (!state.items[name]) {
-    return jsonOutput({ error: 'Item not found: ' + name });
-  }
-
-  const when = body.timestamp ? new Date(body.timestamp) : new Date();
-  const today = dayKey(new Date());
-  // Validate a sale against the day it actually happened, so an action that
-  // was queued offline yesterday and synced today still checks out correctly.
-  const actionDay = dayKey(when);
-
-  if (type === 'cook' && qty > state.items[name].regularStock) {
-    return jsonOutput({
-      error: 'Not enough regular stock',
-      regularStock: state.items[name].regularStock,
-      cookedStock: cookedOn(state, name, today),
+  return withScriptLock(() => {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    writeTrolleyRow(mustGetSheet(ss, TROLLEY_LEDGER_SHEET), {
+      date: body.timestamp ? new Date(body.timestamp) : new Date(),
+      type: 'Purchases',
+      item: name,
+      qty: qty,
+      amount: cost ? cost / qty : '',
     });
-  }
-
-  if (type === 'sell' && qty > cookedOn(state, name, actionDay)) {
-    return jsonOutput({
-      error: 'Not enough cooked stock',
-      regularStock: state.items[name].regularStock,
-      cookedStock: cookedOn(state, name, today),
-    });
-  }
-
-  appendTrolleyLogRow(SpreadsheetApp.getActiveSpreadsheet(), [when, name, type, qty, unit, amount]);
-  SpreadsheetApp.flush();
-
-  const after = trolleyState();
-  return jsonOutput({
-    ok: true,
-    regularStock: after.items[name].regularStock,
-    cookedStock: cookedOn(after, name, dayKey(new Date())),
+    SpreadsheetApp.flush();
+    return jsonOutput({ ok: true, items: trolleyItems() });
   });
 }
 
-// Logs a cash cost for a non-stock trolley ingredient (onions, tomatoes,
-// tomato sauce, barbecue sauce, salt, …) — things bought regularly but never
-// tracked as inventory items themselves. Written straight to Trolley Log
-// with Qty repurposed as the KES amount, same as every other trolley write;
-// trolleyLogAsTransactions() is what turns it into a dashboard transaction.
+// A cash cost with no stock behind it (onions, charcoal, the council fee):
+// one Purchases row of Qty 1 x the amount paid.
 function trolleyExpense(body) {
   const name = body.name;
   const amount = Number(body.qty);
@@ -566,37 +618,66 @@ function trolleyExpense(body) {
     return jsonOutput({ error: 'name and a positive amount are required' });
   }
 
-  const when = body.timestamp ? new Date(body.timestamp) : new Date();
-  appendTrolleyLogRow(SpreadsheetApp.getActiveSpreadsheet(), [when, name, 'expense', amount, 'KES']);
-  SpreadsheetApp.flush();
-
-  return jsonOutput({ ok: true });
+  return withScriptLock(() => {
+    writeTrolleyRow(mustGetSheet(SpreadsheetApp.getActiveSpreadsheet(), TROLLEY_LEDGER_SHEET), {
+      date: body.timestamp ? new Date(body.timestamp) : new Date(),
+      type: 'Purchases',
+      item: name,
+      qty: 1,
+      amount: amount,
+    });
+    SpreadsheetApp.flush();
+    return jsonOutput({ ok: true });
+  });
 }
 
-// Cooked but never sold, per past day. Today is excluded — it isn't over yet.
+// Fills the next free row, leaving the formula columns alone. Free is judged
+// on C, not E: a Float Top Up row has a type but no item, and would otherwise
+// be overwritten.
+function writeTrolleyRow(sheet, entry) {
+  const at = firstBlankRow(sheet, 3);
+  if (!at) {
+    throw new Error(TROLLEY_LEDGER_SHEET + ' is full — no blank row left to record this in');
+  }
+
+  const tz = Session.getScriptTimeZone();
+  const day = Utilities.parseDate(dayKey(entry.date), tz, 'yyyy-MM-dd');
+  sheet.getRange(at, 2, 1, 2).setValues([[day, entry.type]]); // B:C
+  sheet.getRange(at, 5).setValue(entry.item); // E
+  sheet.getRange(at, 7, 1, 2).setValues([[entry.qty, entry.amount]]); // G:H
+  sheet.getRange(at, 10, 1, 2).setValues([[entry.account || '', entry.narration || '']]); // J:K
+}
+
+// Two phones closing at once would otherwise both pick the same free row.
+function withScriptLock(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// What was recorded as spoilt, per past day. Today is excluded — it isn't over.
 function trolleyWaste(days) {
-  const state = trolleyState();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const now = new Date();
   const today = dayKey(now);
   const cutoff = dayKey(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
 
-  return Object.keys(state.perDay)
-    .filter((day) => day < today && day >= cutoff)
+  const byDay = {};
+  readTrolleyLedger(ss).forEach((row) => {
+    if (row.type !== 'Spoilt' || !row.qty || row.day >= today || row.day < cutoff) return;
+    if (!byDay[row.day]) byDay[row.day] = { date: row.day, items: [], total: 0 };
+    byDay[row.day].items.push({ name: row.item, qty: row.qty });
+    byDay[row.day].total += row.qty;
+  });
+
+  return Object.keys(byDay)
     .sort()
     .reverse()
-    .map((day) => {
-      const items = [];
-      let total = 0;
-      state.order.forEach((name) => {
-        const left = cookedOn(state, name, day);
-        if (left > 0) {
-          items.push({ name: name, qty: left });
-          total += left;
-        }
-      });
-      return { date: day, items: items, total: total };
-    })
-    .filter((day) => day.total > 0);
+    .map((day) => byDay[day]);
 }
 
 /* --------------------------- Push notification store ---------------------- */
@@ -693,32 +774,6 @@ function requirePushSecret(given) {
   if (String(given || '') !== expected) throw new Error('Not authorised.');
 }
 
-/* --------------------------- One-time trolley setup ---------------------- */
-
-// Run this once from the Apps Script editor (select it in the function
-// dropdown, press Run). It creates the two trolley tabs and seeds the items.
-// Safe to re-run — it never touches tabs that already exist.
-function setupTrolleySheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  if (!ss.getSheetByName(TROLLEY_INVENTORY_SHEET)) {
-    const inv = ss.insertSheet(TROLLEY_INVENTORY_SHEET);
-    inv.appendRow(['No.', 'Item Name', 'Unit Price', 'Opening Regular']);
-    TROLLEY_ITEMS.forEach((item, i) => inv.appendRow([i + 1, item[0], 0, item[1]]));
-    inv.setFrozenRows(1);
-    inv.autoResizeColumns(1, 4);
-  }
-
-  if (!ss.getSheetByName(TROLLEY_LOG_SHEET)) {
-    const log = ss.insertSheet(TROLLEY_LOG_SHEET);
-    log.appendRow(['Timestamp', 'Item', 'Type', 'Qty', 'Unit', 'Amount']);
-    log.setFrozenRows(1);
-    log.autoResizeColumns(1, 6);
-  }
-
-  return 'Trolley sheets ready.';
-}
-
 /* --------------------------------- Helpers ------------------------------- */
 
 // First row below the header whose `col` cell is genuinely blank, or 0 if
@@ -735,25 +790,10 @@ function firstBlankRow(sheet, col) {
   return 0;
 }
 
-// Trolley Log's "Ammended Type" column (G) is an array formula over the whole
-// column, so appendRow() lands below the bottom of the grid rather than under
-// the last entry — it already left rows 27-999 empty once. Fill the first
-// blank row instead, writing A:F only; G computes itself and must never be
-// written to. Tsn Ledgers only merges Trolley Log down to row 1473, so rows
-// wasted in a gap are rows that eventually drop out of it.
-function appendTrolleyLogRow(ss, row) {
-  const sheet = mustGetSheet(ss, TROLLEY_LOG_SHEET);
-  const at = firstBlankRow(sheet, 2); // B — Item
-  if (at) sheet.getRange(at, 1, 1, row.length).setValues([row]);
-  else sheet.appendRow(row);
-}
-
 function mustGetSheet(ss, name) {
   const sheet = ss.getSheetByName(name);
   if (!sheet) {
-    throw new Error(
-      'Missing sheet "' + name + '" — run setupTrolleySheets() once from the Apps Script editor.'
-    );
+    throw new Error('Missing sheet "' + name + '" — has the tab been renamed?');
   }
   return sheet;
 }
